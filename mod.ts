@@ -4,20 +4,10 @@
  * 
  * @example
  * ```ts
- * import {hiMomOf} from "@panth977/tools";
+ * import TOOLS from "@panth977/tools";
  * 
- * hiMomOf('Panth'); // Hi Panth's mom
+ * TOOLS.hiMomOf('Panth'); // Hi Panth's mom
  * ```
  */
 
-/**
- * This function allows you to "Hi" mom of the target person!
- * @param name target person
- * @example 
- * ```ts
- * hiMomOf('Panth'); // Hi Panth's mom
- * ```
- */
-export function hiMomOf(name: string) {
-    console.log(`Hi ${name}'s mom`);
-}
+export * as TOOLS from './exports';
