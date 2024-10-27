@@ -10,4 +10,4 @@
  * ```
  */
 
-export * as TOOLS from './exports';
+export * as TOOLS from './exports.ts';

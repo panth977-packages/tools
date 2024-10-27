@@ -1,1 +1,1 @@
-export * from './hi';
+export * from './hi.ts';
