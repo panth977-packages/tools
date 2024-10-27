@@ -10,4 +10,7 @@
  * ```
  */
 
+/**
+ * TOOLS namespace exporting to access tools with ease
+ */
 export * as TOOLS from './exports.ts';
