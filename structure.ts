@@ -3,8 +3,8 @@ import { DefaultSplitChar, getInnerProp, type KeyPath } from "./basic.ts";
 /**
  * one-to-one mapping of unique value against given keyPath to the row.
  * @param rows list of records
- * @param keyPath the [keyPath] from [getInnerProp]
- * @param split the [split] from [getInnerProp]
+ * @param keyPath the {@link keyPath} from {@link getInnerProp}
+ * @param split the {@link split} from {@link getInnerProp}
  * @returns a mapped record on the keyPath value
  *
  * @example
@@ -45,8 +45,8 @@ import { DefaultSplitChar, getInnerProp, type KeyPath } from "./basic.ts";
 /**
  * one-to-many mapping of unique value against given keyPath to the row.
  * @param rows list of records
- * @param keyPath the [keyPath] from [getInnerProp]
- * @param split the [split] from [getInnerProp]
+ * @param keyPath the {@link keyPath} from {@link getInnerProp}
+ * @param split the {@link split} from {@link getInnerProp}
  * @returns a mapped record on the keyPath value
  *
  * @example

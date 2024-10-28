@@ -2,8 +2,8 @@ import { DefaultSplitChar, getInnerProp, type KeyPath } from "./basic.ts";
 /**
  * @param rows list of objects
  * @param mode order
- * @param keyPath [keyPath] from [getInnerProp]
- * @param split [split] from [getInnerProp]
+ * @param keyPath {@link keyPath} from {@link getInnerProp}
+ * @param split {@link split} from {@link getInnerProp}
  * @returns lost of object sorted as required
  *
  * @example
@@ -46,8 +46,8 @@ import { DefaultSplitChar, getInnerProp, type KeyPath } from "./basic.ts";
 /**
  * @param rows list of objects
  * @param mode order
- * @param keyPath [keyPath] from [getInnerProp]
- * @param split [split] from [getInnerProp]
+ * @param keyPath {@link keyPath} from {@link getInnerProp}
+ * @param split {@link split} from {@link getInnerProp}
  * @returns lost of object sorted as required
  *
  * @example
