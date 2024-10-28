@@ -1,14 +1,11 @@
 {
   "name": "@panth977/tools",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "exports": "./mod.ts",
   "license": "MIT",
   "tasks": {
     "format": "deno fmt **/*.ts",
-    "lint": "deno lint --fix",
-    "version:patch": "deno run -A scripts/version.ts patch",
-    "version:minor": "deno run -A scripts/version.ts minor",
-    "version:major": "deno run -A scripts/version.ts major"
+    "lint": "deno lint --fix"
   },
   "lint": {
     "rules": {
