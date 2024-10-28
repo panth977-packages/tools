@@ -69,10 +69,10 @@ type Split<A, S extends string> = A extends string ? _Split<`${A}${S}`, S>
  * ```
  */ export type PropTypeExe<T, S extends string, K> = PropExe<T, Split<K, S>>;
 /**
- * DefaultSplitChar is the default char used in [get, set] functions.
+ * DefaultSplitChar is the default char used in [getInnerProp, setInnerProp] functions.
  */ export type DefaultSplitChar = ".";
 /**
- * DefaultSplitChar is the default char used in [get, set] functions.
+ * DefaultSplitChar is the default char used in [getInnerProp, setInnerProp] functions.
  */ export const DefaultSplitChar: DefaultSplitChar = ".";
 
 /**
