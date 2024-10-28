@@ -1,6 +1,6 @@
 {
   "name": "@panth977/tools",
-  "version": "0.1.26",
+  "version": "0.1.27",
   "exports": "./mod.ts",
   "license": "MIT",
   "tasks": {
