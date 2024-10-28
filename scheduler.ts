@@ -19,7 +19,7 @@
  *   return userObj;
  * }
  * onUserChange.subscribe(function (context, event) {
- *  cache.del(`USER_${userId}`);
+ *  cache.del(`USER_${event.userId}`);
  * })
  * ```
  */ export function CreatePubsub<C = any, E = any>(eventSchema?: {
