@@ -1,12 +1,11 @@
 
 /**
  * These are tools from Panth977, who has certain design principles in coding! This makes his life in coding very very easy! 🎉
- * @module
- * 
  * APIS
  * - {@link TOOLS.getInnerProp}
  * - {@link TOOLS.setInnerProp}
  * 
+ * @module
  * 
  * @example
  * ```ts
