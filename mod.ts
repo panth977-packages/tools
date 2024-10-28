@@ -14,7 +14,5 @@
  * TOOLS.[api];
  * ```
  */
-import * as TOOLS from "./exports.ts";
-TOOLS;
 
 export * as TOOLS from "./exports.ts";
