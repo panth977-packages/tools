@@ -6,7 +6,7 @@
  * ```ts
  * import { TOOLS } from "@panth977/tools";
  *
- * TOOLS.hiMomOf('Panth'); // Hi Panth's mom
+ * TOOLS.{api}
  * ```
  */
 
