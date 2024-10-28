@@ -10,12 +10,4 @@
  * ```
  */
 
-import * as ToolsNamespace from './exports.ts';
-
-/**
- * @namespace TOOLS
- * @description Collection of utility functions and constants related to various tools.
- */ export const TOOLS = ToolsNamespace;
-
-// export * from './exports.ts';
-
+export * as TOOLS from "./exports.ts";
