@@ -4,26 +4,14 @@
  *
  * @example
  * ```ts
- * import { TOOLS } from "@panth977/tools";
+ * import { [api] } from "@panth977/tools";
  *
- * TOOLS.{api}
+ * [api];
  * ```
  */
 
-
-import * as basic from "./basic.ts";
-import * as operation from "./operation.ts";
-import * as structure from "./structure.ts";
-import * as scheduler from "./scheduler.ts";
-import * as encode from "./encode.ts";
-
-/**
- * @namespace TOOLS
- * @description Collection of utility functions and constants related to various tools.
- */ export const TOOLS = {
-    ...basic,
-    ...operation,
-    ...structure,
-    ...scheduler,
-    ...encode,
-};
+export * from "./basic.ts";
+export * from "./operation.ts";
+export * from "./structure.ts";
+export * from "./scheduler.ts";
+export * from "./encode.ts";
