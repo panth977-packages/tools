@@ -1,4 +1,3 @@
-import * as TOOLS from "./exports.ts";
 
 /**
  * These are tools from Panth977, who has certain design principles in coding! This makes his life in coding very very easy! 🎉
@@ -16,6 +15,7 @@ import * as TOOLS from "./exports.ts";
  * TOOLS.[api];
  * ```
  */
+import * as TOOLS from "./exports.ts";
 TOOLS;
 
 export * as TOOLS from "./exports.ts";
