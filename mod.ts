@@ -1,9 +1,26 @@
 
 /**
  * These are tools from Panth977, who has certain design principles in coding! This makes his life in coding very very easy! 🎉
- * APIS
+ * 
+ * # Basic Apis
  * - {@link TOOLS.getInnerProp}
  * - {@link TOOLS.setInnerProp}
+ * 
+ * # Encode Apis
+ * - {@link TOOLS.decodeConnectionString}
+ * - {@link TOOLS.encodeConnectionString}
+ * 
+ * # Operation Apis
+ * - {@link TOOLS.sortList}
+ * - {@link TOOLS.destructure}
+ * # Scheduler Apis
+ * - {@link TOOLS.CreateBatchProcessor}
+ * - {@link TOOLS.CreateParallelTaskManager}
+ * - {@link TOOLS.CreatePubsub}
+ * 
+ * # Structure Apis
+ * - {@link TOOLS.oneToOneMapping}
+ * - {@link TOOLS.oneToManyMapping}
  * 
  * @module
  * 
@@ -14,7 +31,5 @@
  * TOOLS.[api];
  * ```
  */
-import * as TOOLS from "./exports.ts";
-TOOLS;
 
 export * as TOOLS from "./exports.ts";
