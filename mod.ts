@@ -4,14 +4,13 @@
  *
  * @example
  * ```ts
- * import { [api] } from "@panth977/tools";
+ * import { TOOLS } from "@panth977/tools";
  *
- * [api];
+ * TOOLS.[api];
  * ```
  */
 
-export * from "./basic.ts";
-export * from "./operation.ts";
-export * from "./structure.ts";
-export * from "./scheduler.ts";
-export * from "./encode.ts";
+export * as TOOLS from './exports.ts';
+
+export * from './exports.ts';
+
