@@ -1,3 +1,8 @@
+/**
+ * These are tools from Panth977, who has certain design principles in coding! This makes his life in coding very very easy! 🎉
+ * @module
+ */
+
 import { DefaultSplitChar, getInnerProp, type KeyPath } from "./basic.ts";
 /**
  * @param rows list of objects
