@@ -1,14 +1,14 @@
 /**
  * a "zod" schema compatible pubsub with strong type Internal PubSub
  * @param eventSchema a schema instance with [parse] type
- * @returns a publish & subscribe methods to the pubsub along with non-parsed context!
+ * @returns a publish & subscribe methods to the pubsub!
  *
  * @example
  * ```ts
- * const onUserChange = TOOLS.CreatePubsub<Context>(z.object({ userId: z.number(), name: z.string() }));
+ * const onUserChange = TOOLS.CreatePubsub(z.object({ userId: z.number(), name: z.string() }));
  * function updateUserName(userId: number, name: string) {
  *   ...
- *   onUserChange.publish(context, {userId, name});
+ *   onUserChange.publish({userId, name});
  * }
  * function getUser(userId: number) {
  *   let userObj = cache.get(`USER_${userId}`);
@@ -18,23 +18,23 @@
  *   }
  *   return userObj;
  * }
- * onUserChange.subscribe(function (context, event) {
+ * onUserChange.subscribe(function (event) {
  *  cache.del(`USER_${event.userId}`);
  * })
  * ```
- */ export function CreatePubsub<C = any, E = any>(eventSchema?: {
+ */ export function CreatePubsub<E = any>(eventSchema?: {
   parse(event: unknown): E;
 }): {
-  publish(context: C, _event: E): Promise<void>;
-  subscribe(cb: (context: C, event: E) => Promise<void> | void): {
+  publish(_event: E): Promise<void>;
+  subscribe(cb: (event: E) => Promise<void> | void): {
     unsubscribe(): void;
   };
 } {
-  const cbs = new Set<(context: C, event: E) => void>();
+  const cbs = new Set<(event: E) => void>();
   return {
-    async publish(context, _event) {
+    async publish(_event) {
       const event = eventSchema ? eventSchema.parse(_event) : _event;
-      await Promise.allSettled([...cbs].map((cb) => cb(context, event)));
+      await Promise.allSettled([...cbs].map((cb) => cb(event)));
     },
     subscribe(cb) {
       cbs.add(cb);
