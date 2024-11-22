@@ -99,7 +99,7 @@ export type KEY = string | number;
  * objArr.push({prop1: {subProp1: 10, subProp2: false}, prop2: 'val-x'});
  * objArr.push({prop1: {subProp1: 7, subProp2: true}, prop2: 'val-y'});
  * objArr.push({prop1: {subProp1: 2, subProp2: true}, prop2: 'val-z'});
- * const mappedRecord = TOOLS.oneToManyMapping(objArr, 'prop1.subProp1', 'prop2');
+ * const mappedRecord = TOOLS.oneToOneToOneMapping(objArr, 'prop1.subProp1', 'prop2');
  * mappedRecord[10]['val-w']; // {prop1: {subProp1: 10, subProp2: true}, prop2: 'val-w'}
  * mappedRecord[10]['val-x']; // {prop1: {subProp1: 10, subProp2: false}, prop2: 'val-x'}
  * mappedRecord[7]['val-x']; // undefined
