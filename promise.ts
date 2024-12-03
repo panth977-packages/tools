@@ -1,6 +1,11 @@
 export async function SettleAllPromise({
   ...jobs
-}: { [k in string | number]: any } | any[]) {
+}: { [k in string | number]: any } | any[]): Promise<{
+  totalJobs: number;
+  errJobs: number;
+  errors: Record<string, unknown>;
+  getStats(): { total: number; status: string; error?: number; rate?: string };
+}> {
   const errors: Record<string, unknown> = {};
   await Promise.all(
     Object.keys(jobs).map(async function (key) {
@@ -23,7 +28,9 @@ export async function SettleAllPromise({
           total: totalJobs,
           status: "❌",
           error: errJobs,
-          rate: ((errJobs * 100) / totalJobs).toFixed(2) + "%",
+          get rate() {
+            return (((this.error ?? 0) * 100) / this.total).toFixed(2) + "%";
+          },
         };
       } else {
         return {
