@@ -23,15 +23,19 @@ export type KEY = string | number;
   T,
   K extends KeyPath<T, S>,
   S extends string = DefaultSplitChar
->(
-  rows: (T | undefined)[],
-  keyPath: K,
-  split: S = DefaultSplitChar as never
-): Record<KEY, T> {
+>({
+  rows,
+  keyPath,
+  split = DefaultSplitChar as never,
+}: {
+  rows: (T | undefined)[];
+  keyPath: K;
+  split?: S;
+}): Record<KEY, T> {
   const result: Record<KEY, T> = {};
   for (const row of rows) {
     if (row) {
-      const keyValue = getInnerProp(row as T, keyPath, split) as
+      const keyValue = getInnerProp({ obj: row as T, keyPath, split }) as
         | string
         | undefined;
       if (keyValue !== undefined) {
@@ -65,15 +69,19 @@ export type KEY = string | number;
   T,
   K extends KeyPath<T, S>,
   S extends string = DefaultSplitChar
->(
-  rows: (T | undefined)[],
-  keyPath: K,
-  split: S = DefaultSplitChar as never
-): Record<KEY, T[]> {
+>({
+  rows,
+  keyPath,
+  split = DefaultSplitChar as never,
+}: {
+  rows: (T | undefined)[];
+  keyPath: K;
+  split?: S;
+}): Record<KEY, T[]> {
   const result: Record<KEY, T[]> = {};
   for (const row of rows) {
     if (row) {
-      const keyValue = getInnerProp(row as T, keyPath, split) as
+      const keyValue = getInnerProp({ obj: row as T, keyPath, split }) as
         | string
         | undefined;
       if (keyValue !== undefined) {
@@ -110,21 +118,30 @@ export type KEY = string | number;
   K1 extends KeyPath<T, S>,
   K2 extends KeyPath<T, S>,
   S extends string = DefaultSplitChar
->(
-  rows: (T | undefined)[],
-  keyPath1: K1,
-  keyPath2: K2,
-  split: S = DefaultSplitChar as never
-): Record<KEY, Record<KEY, T>> {
+>({
+  rows,
+  keyPath1,
+  keyPath2,
+  split = DefaultSplitChar as never,
+}: {
+  rows: (T | undefined)[];
+  keyPath1: K1;
+  keyPath2: K2;
+  split?: S;
+}): Record<KEY, Record<KEY, T>> {
   const result: Record<KEY, Record<KEY, T>> = {};
   for (const row of rows) {
     if (row) {
-      const keyValue1 = getInnerProp(row as T, keyPath1, split) as
-        | string
-        | undefined;
-      const keyValue2 = getInnerProp(row as T, keyPath2, split) as
-        | string
-        | undefined;
+      const keyValue1 = getInnerProp({
+        obj: row as T,
+        keyPath: keyPath1,
+        split,
+      }) as string | undefined;
+      const keyValue2 = getInnerProp({
+        obj: row as T,
+        keyPath: keyPath2,
+        split,
+      }) as string | undefined;
       if (keyValue1 !== undefined && keyValue2 !== undefined) {
         (result[keyValue1] ??= {})[keyValue2] = row;
       }

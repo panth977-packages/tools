@@ -25,18 +25,21 @@
  */ export function CreatePubsub<E = any>(eventSchema?: {
   parse(event: unknown): E;
 }): {
+  cbs: Set<(event: E) => void>;
   publish(_event: E): Promise<void>;
   subscribe(cb: (event: E) => Promise<void> | void): {
     unsubscribe(): void;
   };
 } {
-  const cbs = new Set<(event: E) => void>();
   return {
+    cbs: new Set(),
     async publish(_event) {
+      const { cbs } = this;
       const event = eventSchema ? eventSchema.parse(_event) : _event;
       await Promise.allSettled([...cbs].map((cb) => cb(event)));
     },
     subscribe(cb) {
+      const { cbs } = this;
       cbs.add(cb);
       return {
         unsubscribe() {
@@ -68,11 +71,14 @@
  * ```
  */ export function CreateParallelTaskManager<
   A extends [] | [unknown, ...unknown[]],
-  R,
->(
-  maxParallelExecution: number,
-  implementation: (...arg: A) => Promise<R>,
-): (...arg: A) => Promise<R> {
+  R
+>({
+  implementation,
+  maxParallelExecution,
+}: {
+  maxParallelExecution: number;
+  implementation: (...arg: A) => Promise<R>;
+}): (...arg: A) => Promise<R> {
   let running = 0;
   const queue: Array<() => void> = [];
   function dequeue() {
@@ -126,10 +132,13 @@
  * setTimeout(() => myFunc(4), 6000); // 16, after 11 sec
  * setTimeout(() => myFunc(8), 10000); // 64, after 11 sec
  * ```
- */ export function CreateBatchProcessor<A, R>(
-  delayInMs: number,
-  implementation: (arg: A[]) => Promise<R[]>,
-): (arg: A) => Promise<R> {
+ */ export function CreateBatchProcessor<A, R>({
+  delayInMs,
+  implementation,
+}: {
+  delayInMs: number;
+  implementation: (arg: A[]) => Promise<R[]>;
+}): (arg: A) => Promise<R> {
   let queue: {
     arg: A;
     resolve: (result: R) => void;
