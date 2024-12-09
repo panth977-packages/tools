@@ -1,6 +1,8 @@
+import type { PropType } from "./basic.ts";
 import { DefaultSplitChar, getInnerProp, type KeyPath } from "./basic.ts";
+import { oneToManyMapping } from "./structure.ts";
 /**
- * 
+ *
  * @example
  * ```ts
  * type SomeObj = { prop1?: { subProp1: number; subProp2: boolean }; prop2: string };
@@ -21,32 +23,46 @@ import { DefaultSplitChar, getInnerProp, type KeyPath } from "./basic.ts";
   mode,
   rows,
   split = DefaultSplitChar as never,
+  algorithm = "default",
 }: {
   rows: T[];
-  mode: "ASC" | "DESC";
+  mode:
+    | "ASC"
+    | "DESC"
+    | ((a: PropType<T, S, K>, b: PropType<T, S, K>) => number);
   keyPath: K;
   split?: S;
+  algorithm?: "default" | "bucket";
 }): T[] {
   if (rows.length < 2) return rows;
-  if (mode === "ASC") {
+  if (algorithm === "default") {
     return rows
       .map((r) => ({
         r,
-        v: getInnerProp({ obj: r as T, keyPath, split }) as number,
+        v: getInnerProp({ obj: r, keyPath, split }) as number,
       }))
-      .sort((a, b) => a.v - b.v)
+      .sort(
+        mode === "DESC"
+          ? (a, b) => b.v - a.v
+          : mode === "ASC"
+          ? (a, b) => a.v - b.v
+          : (a, b) => mode(a.v as PropType<T, S, K>, b.v as PropType<T, S, K>)
+      )
       .map((x) => x.r);
   }
-  if (mode === "DESC") {
-    return rows
-      .map((r) => ({
-        r,
-        v: getInnerProp({ obj: r as T, keyPath, split }) as number,
-      }))
-      .sort((a, b) => b.v - a.v)
-      .map((x) => x.r);
+  if (algorithm === "bucket") {
+    const bucket = oneToManyMapping({ rows, keyPath, split });
+    return (Object.keys(bucket) as any[] as number[])
+      .sort(
+        mode === "DESC"
+          ? (a, b) => b - a
+          : mode === "ASC"
+          ? (a, b) => a - b
+          : (a, b) => mode(a as PropType<T, S, K>, b as PropType<T, S, K>)
+      )
+      .reduce<T[]>((x, y) => x.concat(bucket[y]), []);
   }
-  throw new Error("unimplemented mode found!");
+  throw new Error("unimplemented operation found!");
 }
 
 /**

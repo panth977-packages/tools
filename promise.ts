@@ -1,43 +1,41 @@
 export async function SettleAllPromise({
   ...jobs
 }: { [k in string | number]: any } | any[]): Promise<{
-  totalJobs: number;
-  errJobs: number;
   errors: Record<string, unknown>;
-  getStats(): { total: number; status: string; error?: number; rate?: string };
+  results: Record<string, unknown>;
+  stats: { total: number; status: string; error?: number; rate?: string };
 }> {
   const errors: Record<string, unknown> = {};
+  const results: Record<string, unknown> = {};
   await Promise.all(
     Object.keys(jobs).map(async function (key) {
       try {
-        await jobs[key as keyof typeof jobs];
+        results[key] = await jobs[key as keyof typeof jobs];
       } catch (err) {
         errors[key] = err;
       }
     })
   );
-  const totalJobs = Object.keys(jobs).length;
-  const errJobs = Object.keys(errors).length;
   return {
-    totalJobs,
-    errJobs,
     errors,
-    getStats() {
-      if (errJobs) {
+    results,
+    get stats() {
+      const resultJobs = Object.keys(results).length;
+      const errJobs = Object.keys(errors).length;
+      if (!errJobs) {
         return {
-          total: totalJobs,
-          status: "❌",
-          error: errJobs,
-          get rate() {
-            return (((this.error ?? 0) * 100) / this.total).toFixed(2) + "%";
-          },
-        };
-      } else {
-        return {
-          total: totalJobs,
+          total: resultJobs,
           status: "✅",
         };
       }
+      return {
+        total: errJobs + resultJobs,
+        status: "❌",
+        error: errJobs,
+        get errRate() {
+          return ((errJobs * 100) / (errJobs + resultJobs)).toFixed(2) + "%";
+        },
+      };
     },
   };
 }
