@@ -22,24 +22,27 @@ export type KEY = string | number;
  */ export function oneToOneMapping<
   T,
   K extends KeyPath<T, S>,
-  S extends string = DefaultSplitChar
+  S extends string = DefaultSplitChar,
+  R = T
 >({
   rows,
   keyPath,
   split = DefaultSplitChar as never,
+  map,
 }: {
   rows: (T | undefined)[];
   keyPath: K;
   split?: S;
-}): Record<KEY, T> {
-  const result: Record<KEY, T> = {};
+  map?: (val: T) => R;
+}): Record<KEY, R> {
+  const result: Record<KEY, R> = {};
   for (const row of rows) {
     if (row) {
       const keyValue = getInnerProp({ obj: row as T, keyPath, split }) as
         | string
         | undefined;
       if (keyValue !== undefined) {
-        result[keyValue] = row as T;
+        result[keyValue] = map ? map(row) : (row as R);
       }
     }
   }
@@ -68,24 +71,27 @@ export type KEY = string | number;
  */ export function oneToManyMapping<
   T,
   K extends KeyPath<T, S>,
-  S extends string = DefaultSplitChar
+  S extends string = DefaultSplitChar,
+  R = T
 >({
   rows,
   keyPath,
   split = DefaultSplitChar as never,
+  map,
 }: {
   rows: (T | undefined)[];
   keyPath: K;
   split?: S;
-}): Record<KEY, T[]> {
-  const result: Record<KEY, T[]> = {};
+  map?: (val: T) => R;
+}): Record<KEY, R[]> {
+  const result: Record<KEY, R[]> = {};
   for (const row of rows) {
     if (row) {
       const keyValue = getInnerProp({ obj: row as T, keyPath, split }) as
         | string
         | undefined;
       if (keyValue !== undefined) {
-        (result[keyValue] ??= []).push(row);
+        (result[keyValue] ??= []).push(map ? map(row) : (row as R));
       }
     }
   }
@@ -117,19 +123,22 @@ export type KEY = string | number;
   T,
   K1 extends KeyPath<T, S>,
   K2 extends KeyPath<T, S>,
-  S extends string = DefaultSplitChar
+  S extends string = DefaultSplitChar,
+  R = T
 >({
   rows,
   keyPath1,
   keyPath2,
   split = DefaultSplitChar as never,
+  map,
 }: {
   rows: (T | undefined)[];
   keyPath1: K1;
   keyPath2: K2;
   split?: S;
-}): Record<KEY, Record<KEY, T>> {
-  const result: Record<KEY, Record<KEY, T>> = {};
+  map?: (val: T) => R;
+}): Record<KEY, Record<KEY, R>> {
+  const result: Record<KEY, Record<KEY, R>> = {};
   for (const row of rows) {
     if (row) {
       const keyValue1 = getInnerProp({
@@ -143,7 +152,7 @@ export type KEY = string | number;
         split,
       }) as string | undefined;
       if (keyValue1 !== undefined && keyValue2 !== undefined) {
-        (result[keyValue1] ??= {})[keyValue2] = row;
+        (result[keyValue1] ??= {})[keyValue2] = map ? map(row) : (row as R);
       }
     }
   }
