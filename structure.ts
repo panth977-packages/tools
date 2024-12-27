@@ -33,7 +33,7 @@ export type KEY = string | number;
   rows: (T | undefined)[];
   keyPath: K;
   split?: S;
-  map?: (key: KEY, val: T) => R;
+  map?: (val: T, key: KEY) => R;
 }): Record<KEY, R> {
   const result: Record<KEY, any> = {};
   for (const row of rows) {
@@ -46,7 +46,7 @@ export type KEY = string | number;
   }
   if (map) {
     for (const id in result) {
-      result[id] = map(id as KEY, result[id]);
+      result[id] = map(result[id], id);
     }
   }
   return result;
@@ -85,7 +85,7 @@ export type KEY = string | number;
   rows: (T | undefined)[];
   keyPath: K;
   split?: S;
-  map?: (key: KEY, val: T[]) => R;
+  map?: (val: T[], key: KEY) => R;
 }): Record<KEY, R> {
   const result: Record<KEY, any> = {};
   for (const row of rows) {
@@ -98,7 +98,7 @@ export type KEY = string | number;
   }
   if (map) {
     for (const id in result) {
-      result[id] = map(id, result[id]);
+      result[id] = map(result[id], id);
     }
   }
   return result;
