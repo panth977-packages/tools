@@ -1,5 +1,4 @@
-import type { PropType } from "./basic.ts";
-import { DefaultSplitChar, getInnerProp, type KeyPath } from "./basic.ts";
+import { DefaultSplitChar, getInnerProp, type KeyPath, type PropType, type DefaultPrimitive } from "./basic.ts";
 import { oneToManyMapping } from "./structure.ts";
 /**
  *
@@ -16,8 +15,9 @@ import { oneToManyMapping } from "./structure.ts";
  * ```
  */ export function sortList<
   T,
-  K extends KeyPath<T, S>,
-  S extends string = DefaultSplitChar
+  K extends KeyPath<T, S, P>,
+  S extends string = DefaultSplitChar,
+  P = DefaultPrimitive,
 >({
   keyPath,
   mode,

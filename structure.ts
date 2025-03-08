@@ -1,4 +1,4 @@
-import { DefaultSplitChar, getInnerProp, type KeyPath } from "./basic.ts";
+import { DefaultSplitChar, getInnerProp, type KeyPath, type DefaultPrimitive } from "./basic.ts";
 export type KEY = string | number;
 /**
  * one-to-one mapping of unique value against given keyPath to the row.
@@ -21,8 +21,9 @@ export type KEY = string | number;
  * ```
  */ export function oneToOneMapping<
   T,
-  K extends KeyPath<T, S>,
+  K extends KeyPath<T, S, P>,
   S extends string = DefaultSplitChar,
+  P = DefaultPrimitive,
   R = T
 >({
   rows,
@@ -73,8 +74,9 @@ export type KEY = string | number;
  * ```
  */ export function oneToManyMapping<
   T,
-  K extends KeyPath<T, S>,
+  K extends KeyPath<T, S, P>,
   S extends string = DefaultSplitChar,
+  P = DefaultPrimitive,
   R = T[]
 >({
   rows,

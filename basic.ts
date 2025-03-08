@@ -20,7 +20,7 @@ type PropExe<T, K> = K extends [
   : T;
 type KeyOf<T> = Exclude<{ [k in keyof T]: k }[keyof T], undefined>;
 type ValueOf<T> = T[KeyOf<T>];
-type Primitive =
+export type DefaultPrimitive =
   | null
   | symbol
   | undefined
@@ -28,12 +28,12 @@ type Primitive =
   | string
   | boolean
   | ((...arg: any[]) => any);
-type KeyTree<T> = ValueOf<{
-  [K in KeyOf<T>]: T extends { [k_ in K]: Primitive }
+type KeyTree<T, P> = ValueOf<{
+  [K in KeyOf<T>]: T extends { [k_ in K]: P }
     ? [K]
-    : T extends { [k_ in K]?: Primitive }
+    : T extends { [k_ in K]?: P }
     ? [K]
-    : [K] | [K, ...KeyTree<Exclude<T[K], undefined>>];
+    : [K] | [K, ...KeyTree<Exclude<T[K], undefined>, P>];
 }>;
 type _Join<A, S extends string> = A extends [
   infer E1 extends string | number,
@@ -58,8 +58,8 @@ type Split<A, S extends string> = A extends string
  * type SomeObj = { prop1?: { subProp1: number; subProp2: boolean }; prop2: string };
  * type PossibleKeyPaths = KeyPath<SomeObj, '.'>; // 'prop1.subProp1' | 'prop1.subProp2' | 'prop2'
  * ```
- */ export type KeyPath<T, S extends string> =
-  | Join<KeyTree<T>, S>
+ */ export type KeyPath<T, S extends string, P> =
+  | Join<KeyTree<T, P>, S>
   | (string & Record<never, never>);
 /**
  * type template to get type of the keyPath of given type
@@ -97,8 +97,9 @@ type Split<A, S extends string> = A extends string
  * ```
  */ export function getInnerProp<
   T,
-  K extends KeyPath<T, S>,
-  S extends string = DefaultSplitChar
+  K extends KeyPath<T, S, P>,
+  S extends string = DefaultSplitChar,
+  P = DefaultPrimitive,
 >({
   keyPath,
   obj,
@@ -128,8 +129,9 @@ type Split<A, S extends string> = A extends string
  * ```
  */ export function setInnerProp<
   T,
-  K extends KeyPath<T, S>,
-  S extends string = DefaultSplitChar
+  K extends KeyPath<T, S, P>,
+  S extends string = DefaultSplitChar,
+  P = DefaultPrimitive
 >({
   keyPath,
   obj,
