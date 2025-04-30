@@ -22,9 +22,10 @@
  *  cache.del(`USER_${event.userId}`);
  * })
  * ```
- */ export function CreatePubsub<E = any>(eventSchema?: {
-  parse(event: unknown): E;
-}): {
+ */ export function CreatePubsub<Z extends { parse(event: unknown): E }, E>(
+  eventSchema: Z
+): {
+  eventSchema: Z;
   cbs: Set<(event: E) => void>;
   publish(_event: E): Promise<void>;
   subscribe(cb: (event: E) => Promise<void> | void): {
@@ -32,10 +33,11 @@
   };
 } {
   return {
+    eventSchema,
     cbs: new Set(),
     async publish(_event) {
-      const { cbs } = this;
-      const event = eventSchema ? eventSchema.parse(_event) : _event;
+      const { cbs, eventSchema } = this;
+      const event = eventSchema.parse(_event);
       await Promise.allSettled([...cbs].map((cb) => cb(event)));
     },
     subscribe(cb) {
