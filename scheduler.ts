@@ -22,13 +22,13 @@
  *  cache.del(`USER_${event.userId}`);
  * })
  * ```
- */ export function CreatePubsub<Z extends { parse(event: unknown): E }, E>(
+ */ export function CreatePubsub<Z extends { parse(event: unknown): any }>(
   eventSchema: Z
 ): {
   eventSchema: Z;
-  cbs: Set<(event: E) => void>;
-  publish(_event: E): Promise<void>;
-  subscribe(cb: (event: E) => Promise<void> | void): {
+  cbs: Set<(event: ReturnType<Z["parse"]>) => void>;
+  publish(_event: ReturnType<Z["parse"]>): Promise<void>;
+  subscribe(cb: (event: ReturnType<Z["parse"]>) => Promise<void> | void): {
     unsubscribe(): void;
   };
 } {
