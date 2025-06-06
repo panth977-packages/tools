@@ -1,22 +1,16 @@
 type Prop<T, K> = K extends [
   infer K1 extends string,
-  ...infer Ks extends string[]
-]
-  ? T extends { [k in K1]: infer V }
-    ? Prop<V, Ks>
-    : T extends { [k in K1]?: infer V }
-    ? Prop<V, Ks> | undefined
-    : never
+  ...infer Ks extends string[],
+] ? T extends { [k in K1]: infer V } ? Prop<V, Ks>
+  : T extends { [k in K1]?: infer V } ? Prop<V, Ks> | undefined
+  : never
   : T;
 type PropExe<T, K> = K extends [
   infer K1 extends string,
-  ...infer Ks extends string[]
-]
-  ? T extends { [k in K1]: infer V }
-    ? PropExe<V, Ks>
-    : T extends { [k in K1]?: infer V }
-    ? PropExe<V, Ks>
-    : never
+  ...infer Ks extends string[],
+] ? T extends { [k in K1]: infer V } ? PropExe<V, Ks>
+  : T extends { [k in K1]?: infer V } ? PropExe<V, Ks>
+  : never
   : T;
 type KeyOf<T> = Exclude<{ [k in keyof T]: k }[keyof T], undefined>;
 type ValueOf<T> = T[KeyOf<T>];
@@ -28,27 +22,24 @@ export type DefaultPrimitive =
   | string
   | boolean
   | ((...arg: any[]) => any);
-type KeyTree<T, P> = ValueOf<{
-  [K in KeyOf<T>]: T extends { [k_ in K]: P }
-    ? [K]
-    : T extends { [k_ in K]?: P }
-    ? [K]
-    : [K] | [K, ...KeyTree<Exclude<T[K], undefined>, P>];
-}>;
+type KeyTree<T, P> = ValueOf<
+  {
+    [K in KeyOf<T>]: T extends { [k_ in K]: P } ? [K]
+      : T extends { [k_ in K]?: P } ? [K]
+      : [K] | [K, ...KeyTree<Exclude<T[K], undefined>, P>];
+  }
+>;
 type _Join<A, S extends string> = A extends [
   infer E1 extends string | number,
-  ...infer Es
-]
-  ? `${E1}${S}${_Join<Es, S>}`
+  ...infer Es,
+] ? `${E1}${S}${_Join<Es, S>}`
   : ``;
-type Join<A, S extends string> = _Join<A, S> extends `${infer E}${S}`
-  ? E
+type Join<A, S extends string> = _Join<A, S> extends `${infer E}${S}` ? E
   : never;
 type _Split<A, S extends string> = A extends `${infer E1}${S}${infer Es}`
   ? [E1, ..._Split<Es, S>]
   : [];
-type Split<A, S extends string> = A extends string
-  ? _Split<`${A}${S}`, S>
+type Split<A, S extends string> = A extends string ? _Split<`${A}${S}`, S>
   : never;
 
 /**
@@ -100,17 +91,16 @@ type Split<A, S extends string> = A extends string
   K extends KeyPath<T, S, P>,
   S extends string = DefaultSplitChar,
   P = DefaultPrimitive,
->({
-  keyPath,
-  obj,
-  split = DefaultSplitChar as never,
-}: {
-  obj: T;
-  keyPath: K;
-  split?: S;
-}): PropType<T, S, K> {
-  const path = keyPath.split(split as never);
-  return path.reduce<any>((acc, part) => acc?.[part], obj);
+>(
+  obj: T,
+  keyPath: K,
+  split?: S,
+): PropType<T, S, K> {
+  for (const p of keyPath.split(split ?? DefaultSplitChar)) {
+    if (!obj) return undefined as never;
+    obj = obj[p as never] as never;
+  }
+  return obj as never;
 }
 
 /**
@@ -131,20 +121,21 @@ type Split<A, S extends string> = A extends string
   T,
   K extends KeyPath<T, S, P>,
   S extends string = DefaultSplitChar,
-  P = DefaultPrimitive
->({
-  keyPath,
-  obj,
-  value,
-  split = DefaultSplitChar as never,
-}: {
-  obj: T;
-  keyPath: K;
-  value: PropTypeExe<T, S, K>;
-  split?: S;
-}): void {
-  const path = keyPath.split(split as never);
-  path.slice(0, path.length - 1).reduce<any>((acc, part) => acc?.[part], obj)[
-    path[path.length - 1]
-  ] = value;
+  P = DefaultPrimitive,
+>(
+  obj: T,
+  keyPath: K,
+  value: PropTypeExe<T, S, K>,
+  split?: S,
+): void {
+  const paths = keyPath.split(split ?? DefaultSplitChar);
+  const lst = paths.pop();
+  for (const p of paths) {
+    if (!obj) throw new Error(`Object is undefined`);
+    obj = obj[p as never] as never;
+  }
+  if (obj[lst as never] === undefined) {
+    throw new Error(`Property ${lst} does not exist`);
+  }
+  obj[lst as never] = value as never;
 }

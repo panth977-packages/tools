@@ -1,7 +1,12 @@
-import { DefaultSplitChar, getInnerProp, type KeyPath, type PropType, type DefaultPrimitive } from "./basic.ts";
-import { oneToManyMapping } from "./structure.ts";
+import {
+  type DefaultPrimitive,
+  DefaultSplitChar,
+  getInnerProp,
+  type KeyPath,
+  type PropType,
+} from "./basic.ts";
+import { IndexInnerKeyOneToMany } from "./structure.ts";
 /**
- *
  * @example
  * ```ts
  * type SomeObj = { prop1?: { subProp1: number; subProp2: boolean }; prop2: string };
@@ -13,52 +18,47 @@ import { oneToManyMapping } from "./structure.ts";
  * const sortedObjArr = TOOLS.sortList({rows: objArr, mode: 'ASC', keyPath: 'prop1.subProp1'});
  * sortedObjArr.map(x => x.prop2); // ['z', 'x', 'y, 'w']
  * ```
- */ export function sortList<
-  T,
+ */
+export function sortList<
+  T extends Record<string, any>,
   K extends KeyPath<T, S, P>,
   S extends string = DefaultSplitChar,
   P = DefaultPrimitive,
->({
-  keyPath,
-  mode,
-  rows,
-  split = DefaultSplitChar as never,
-  algorithm = "default",
-}: {
-  rows: T[];
+>(
+  rows: T[],
   mode:
     | "ASC"
     | "DESC"
-    | ((a: PropType<T, S, K>, b: PropType<T, S, K>) => number);
-  keyPath: K;
-  split?: S;
-  algorithm?: "default" | "bucket";
-}): T[] {
+    | ((a: PropType<T, S, K>, b: PropType<T, S, K>) => number),
+  keyPath: K,
+  split?: S,
+  algorithm?: "default" | "bucket",
+): T[] {
   if (rows.length < 2) return rows;
-  if (algorithm === "default") {
+  if (!algorithm || algorithm === "default") {
     return rows
       .map((r) => ({
         r,
-        v: getInnerProp({ obj: r, keyPath, split }) as number,
+        v: getInnerProp(r, keyPath, split) as number,
       }))
       .sort(
         mode === "DESC"
           ? (a, b) => b.v - a.v
           : mode === "ASC"
           ? (a, b) => a.v - b.v
-          : (a, b) => mode(a.v as PropType<T, S, K>, b.v as PropType<T, S, K>)
+          : (a, b) => mode(a.v as PropType<T, S, K>, b.v as PropType<T, S, K>),
       )
       .map((x) => x.r);
   }
   if (algorithm === "bucket") {
-    const bucket = oneToManyMapping({ rows, keyPath, split });
+    const bucket = new IndexInnerKeyOneToMany(rows, keyPath, split).toRecord();
     return (Object.keys(bucket) as any[] as number[])
       .sort(
         mode === "DESC"
           ? (a, b) => b - a
           : mode === "ASC"
           ? (a, b) => a - b
-          : (a, b) => mode(a as PropType<T, S, K>, b as PropType<T, S, K>)
+          : (a, b) => mode(a as PropType<T, S, K>, b as PropType<T, S, K>),
       )
       .reduce<T[]>((x, y) => x.concat(bucket[y]), []);
   }
@@ -66,7 +66,6 @@ import { oneToManyMapping } from "./structure.ts";
 }
 
 /**
- *
  * @example
  * ```ts
  * type SomeObj = { 'prop1.subProp1': number; 'prop1.subProp2': boolean; prop2: string };
@@ -79,13 +78,11 @@ import { oneToManyMapping } from "./structure.ts";
  * const destructuredObjArr = TOOLS.destructure({rows: objArr}) as DestructuredSomeObj[];
  * destructuredObjArr; // [{prop1: {subProp1: 10, subProp2: true}, prop2: 'val-w'}, {prop1: {subProp1: 5, subProp2: false}, prop2: 'val-x'}, {prop1: {subProp1: 7, subProp2: true}, prop2: 'val-y'}, {prop1: {subProp1: 2, subProp2: true}, prop2: 'val-z'}]
  * ```
- */ export function destructure({
-  rows,
+ */
+export function destructure(
+  rows: Record<string, unknown>[],
   split = DefaultSplitChar,
-}: {
-  rows: Record<string, unknown>[];
-  split?: string;
-}): Record<string, unknown>[] {
+): Record<string, unknown>[] {
   const newRows: Record<string, unknown>[] = [];
   for (const row of rows) {
     const newRow = {};

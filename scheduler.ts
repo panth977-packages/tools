@@ -1,14 +1,12 @@
 /**
  * a "zod" schema compatible pubsub with strong type Internal PubSub
- * @param eventSchema a schema instance with [parse] type
- * @returns a publish & subscribe methods to the pubsub!
  *
  * @example
  * ```ts
- * const onUserChange = TOOLS.CreatePubsub(z.object({ userId: z.number(), name: z.string() }));
- * function updateUserName(userId: number, name: string) {
+ * const onUserChange = new PubSub(z.object({ userId: z.number(), name: z.string() }));
+ * async function updateUserName(userId: number, name: string) {
  *   ...
- *   onUserChange.publish({userId, name});
+ *   await onUserChange.publish('async', {userId, name});
  * }
  * function getUser(userId: number) {
  *   let userObj = cache.get(`USER_${userId}`);
@@ -18,101 +16,124 @@
  *   }
  *   return userObj;
  * }
- * onUserChange.subscribe(function (event) {
- *  cache.del(`USER_${event.userId}`);
+ * onUserChange.subscribe('cb', function (event, cb) {
+ *  cache.del(`USER_${event.userId}`, cb);
  * })
  * ```
- */ export function CreatePubsub<Z extends { parse(event: unknown): any }>(
-  eventSchema: Z
-): {
-  eventSchema: Z;
-  cbs: Set<(event: ReturnType<Z["parse"]>) => void>;
-  publish(_event: ReturnType<Z["parse"]>): Promise<void>;
-  subscribe(cb: (event: ReturnType<Z["parse"]>) => Promise<void> | void): {
-    unsubscribe(): void;
-  };
-} {
-  return {
-    eventSchema,
-    cbs: new Set(),
-    async publish(_event) {
-      const { cbs, eventSchema } = this;
-      const event = eventSchema.parse(_event);
-      await Promise.allSettled([...cbs].map((cb) => cb(event)));
-    },
-    subscribe(cb) {
-      const { cbs } = this;
-      cbs.add(cb);
-      return {
-        unsubscribe() {
-          cbs.delete(cb);
-        },
-      };
-    },
-  };
-}
+ */
+export class PubSub<T, Z extends { parse(event: unknown): T }> {
+  readonly eventSchema: Z;
+  private asyncListners: Array<(event: T) => Promise<void>>;
+  private cbListners: Array<(event: T, cb: VoidFunction) => void>;
+  constructor(eventSchema: Z) {
+    this.eventSchema = eventSchema;
+    this.asyncListners = [];
+    this.cbListners = [];
+  }
 
-/**
- * function builder that can be call any number of time and will only allow [maxParallelExecution] exe run at any instance at max
- * @param maxParallelExecution maximum number of executions you like to do in parallel
- * @param implementation function implementation
- * @returns parallel execution managed function
- *
- * @example
- * ```ts
- * const start = Date.now();
- * const myFunc = TOOLS.CreateParallelTaskManager(2, async function (arg: number) {
- *   await new Promise((res) => setTimeout(res, 5000));
- *   return arg ** 2;
- * })
- * myFunc(10); // 100, after 5 sec
- * myFunc(20); // 400, after 5 sec
- * myFunc(5); // 25, after 10 sec
- * myFunc(3); // 9, after 10 sec
- * myFunc(4); // 16, after 15 sec
- * ```
- */ export function CreateParallelTaskManager<
-  A extends [] | [unknown, ...unknown[]],
-  R
->({
-  implementation,
-  maxParallelExecution,
-}: {
-  maxParallelExecution: number;
-  implementation: (...arg: A) => Promise<R>;
-}): (...arg: A) => Promise<R> {
-  let running = 0;
-  const queue: Array<() => void> = [];
-  function dequeue() {
-    running--;
-    if (running < maxParallelExecution && queue.length) {
-      running++;
-      const nextTask = queue.shift();
-      if (nextTask) nextTask();
+  private createOnComplete(l: number, cb: VoidFunction) {
+    return () => {
+      l--;
+      if (l === 0) {
+        cb!();
+      }
+    };
+  }
+
+  /**
+   * publish the event.
+   * this assumes the all callbacks, are error handled, and so no error shall be expected from publish
+   * - `WARNING`: If you expect subscribers function to throw error, then keep it 'async' & subscribe under 'async'
+   * - `NOTE`: you can pass async handler and callback handler, and will be invoked by any form of publish.
+   */
+  publish(type: "async", _event: T): Promise<void>;
+  publish(type: "cb", _event: T, cb: VoidFunction): void;
+  publish(
+    type: "async" | "cb",
+    _event: T,
+    cb?: VoidFunction,
+  ): Promise<void> | void {
+    if (this.asyncListners.length === 0 && this.cbListners.length === 0) {
+      if (type === "async") {
+        return Promise.resolve();
+      } else {
+        cb!();
+        return;
+      }
+    }
+    const event = this.eventSchema.parse(_event);
+    if (type === "async") {
+      const jobs = [];
+      for (const cb of this.asyncListners) {
+        jobs.push(cb(event));
+      }
+      if (this.cbListners.length) {
+        const job = new Promise<void>((res) => {
+          const onComplete = this.createOnComplete(this.cbListners.length, res);
+          for (const cb of this.cbListners) {
+            cb(event, onComplete);
+          }
+        });
+        jobs.push(job);
+      }
+      return Promise.allSettled(jobs) as Promise<any>;
+    } else if (type === "cb") {
+      const onComplete = this.createOnComplete(
+        this.cbListners.length + (this.asyncListners.length ? 1 : 0),
+        cb!,
+      );
+      if (this.asyncListners.length) {
+        const jobs = [];
+        for (const cb of this.asyncListners) {
+          jobs.push(cb(event));
+        }
+        Promise.allSettled(jobs).then(onComplete);
+      }
+      for (const cb of this.cbListners) {
+        cb(event, onComplete);
+      }
     }
   }
 
-  return function (...arg) {
-    return new Promise((resolve, reject) => {
-      async function runTask() {
-        try {
-          const result = await implementation(...arg);
-          resolve(result);
-        } catch (error) {
-          reject(error);
-        } finally {
-          dequeue();
+  private createUnlisten(type: "async" | "cb", cb: any): VoidFunction {
+    if (type === "async") {
+      return () => {
+        const i = this.asyncListners.findIndex(cb);
+        if (i !== -1) {
+          this.asyncListners.splice(i, 1);
         }
-      }
+      };
+    } else if (type === "cb") {
+      return () => {
+        const i = this.cbListners.findIndex(cb);
+        if (i !== -1) {
+          this.cbListners.splice(i, 1);
+        }
+      };
+    } else {
+      throw new Error("Invalid type");
+    }
+  }
 
-      if (running < maxParallelExecution) {
-        running++;
-        runTask();
-      } else {
-        queue.push(runTask);
-      }
-    });
-  };
+  /**
+   * subscribe to the event.
+   * this expects a callback that has error handling inside
+   * - `WARNING`: If you expect function to throw error, then keep it 'async' & publish under 'async'
+   * - `NOTE`: you can pass async handler and callback handler, and will be invoked by any form of publish.
+   */
+  subscribe(type: "async", cb: (event: T) => Promise<void>): VoidFunction;
+  subscribe(type: "cb", cb: (event: T, cb: VoidFunction) => void): VoidFunction;
+  subscribe(type: "async" | "cb", cb: any): VoidFunction {
+    if (type === "async") {
+      this.asyncListners.push(cb);
+      return this.createUnlisten("async", cb);
+    } else if (type === "cb") {
+      this.cbListners.push(cb);
+      return this.createUnlisten("cb", cb);
+    } else {
+      throw new Error("Invalid type");
+    }
+  }
 }
 
 /**
@@ -134,7 +155,8 @@
  * setTimeout(() => myFunc(4), 6000); // 16, after 11 sec
  * setTimeout(() => myFunc(8), 10000); // 64, after 11 sec
  * ```
- */ export function CreateBatchProcessor<A, R>({
+ */
+export function CreateBatchProcessor<A, R>({
   delayInMs,
   implementation,
 }: {

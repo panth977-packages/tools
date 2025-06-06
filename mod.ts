@@ -1,33 +1,35 @@
-
 /**
  * # Basic Apis
- * - {@link TOOLS.getInnerProp}
- * - {@link TOOLS.setInnerProp}
- * 
+ * - {@link T.getInnerProp}
+ * - {@link T.setInnerProp}
+ *
  * # Encode Apis
- * - {@link TOOLS.decodeConnectionString}
- * - {@link TOOLS.encodeConnectionString}
- * 
+ * - {@link T.decodeConnectionString}
+ * - {@link T.encodeConnectionString}
+ *
  * # Operation Apis
- * - {@link TOOLS.sortList}
- * - {@link TOOLS.destructure}
+ * - {@link T.sortList}
+ * - {@link T.destructure}
  * # Scheduler Apis
- * - {@link TOOLS.CreateBatchProcessor}
- * - {@link TOOLS.CreateParallelTaskManager}
- * - {@link TOOLS.CreatePubsub}
- * 
+ * - {@link T.CreateBatchProcessor}
+ * - {@link T.PubSub}
+ *
  * # Structure Apis
- * - {@link TOOLS.oneToOneMapping}
- * - {@link TOOLS.oneToManyMapping}
- * 
+ * - {@link T.IndexKeyOneToOne}
+ * - {@link T.IndexInnerKeyOneToOne}
+ * - {@link T.IndexKeyOneToMany}
+ * - {@link T.IndexInnerKeyOneToMany}
+ *
  * @module
- * 
+ *
  * @example
  * ```ts
- * import { TOOLS } from "@panth977/tools";
+ * import { T } from "@panth977/tools";
  *
- * TOOLS.[api];
+ * T.[api];
  * ```
  */
 
-export * as TOOLS from "./exports.ts";
+import * as T from "./exports.ts";
+
+export { T };
