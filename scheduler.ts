@@ -1,3 +1,5 @@
+import type { z } from "zod/v4";
+
 /**
  * a "zod" schema compatible pubsub with strong type Internal PubSub
  *
@@ -21,10 +23,10 @@
  * })
  * ```
  */
-export class PubSub<T, Z extends { parse(event: unknown): T }> {
+export class PubSub<Z extends z.ZodType> {
   readonly eventSchema: Z;
-  private asyncListners: Array<(event: T) => Promise<void>>;
-  private cbListners: Array<(event: T, cb: VoidFunction) => void>;
+  private asyncListners: Array<(event: z.infer<Z>) => Promise<void>>;
+  private cbListners: Array<(event: z.infer<Z>, cb: VoidFunction) => void>;
   constructor(eventSchema: Z) {
     this.eventSchema = eventSchema;
     this.asyncListners = [];
@@ -46,11 +48,11 @@ export class PubSub<T, Z extends { parse(event: unknown): T }> {
    * - `WARNING`: If you expect subscribers function to throw error, then keep it 'async' & subscribe under 'async'
    * - `NOTE`: you can pass async handler and callback handler, and will be invoked by any form of publish.
    */
-  publish(type: "async", _event: T): Promise<void>;
-  publish(type: "cb", _event: T, cb: VoidFunction): void;
+  publish(type: "async", _event: z.infer<Z>): Promise<void>;
+  publish(type: "cb", _event: z.infer<Z>, cb: VoidFunction): void;
   publish(
     type: "async" | "cb",
-    _event: T,
+    _event: z.infer<Z>,
     cb?: VoidFunction,
   ): Promise<void> | void {
     if (this.asyncListners.length === 0 && this.cbListners.length === 0) {
@@ -121,8 +123,14 @@ export class PubSub<T, Z extends { parse(event: unknown): T }> {
    * - `WARNING`: If you expect function to throw error, then keep it 'async' & publish under 'async'
    * - `NOTE`: you can pass async handler and callback handler, and will be invoked by any form of publish.
    */
-  subscribe(type: "async", cb: (event: T) => Promise<void>): VoidFunction;
-  subscribe(type: "cb", cb: (event: T, cb: VoidFunction) => void): VoidFunction;
+  subscribe(
+    type: "async",
+    cb: (event: z.infer<Z>) => Promise<void>,
+  ): VoidFunction;
+  subscribe(
+    type: "cb",
+    cb: (event: z.infer<Z>, cb: VoidFunction) => void,
+  ): VoidFunction;
   subscribe(type: "async" | "cb", cb: any): VoidFunction {
     if (type === "async") {
       this.asyncListners.push(cb);
