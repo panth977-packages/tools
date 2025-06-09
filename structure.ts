@@ -11,7 +11,7 @@ import { z } from "zod/v4";
 export function zStructure<Idx extends z.ZodType, T extends z.ZodType>(
   indexSchema: Idx,
   valueSchema: T,
-): z.ZodType<Structure<z.infer<Idx>, z.infer<T>>> {
+): z.ZodCustom<Structure<z.infer<Idx>, z.infer<T>>> {
   return z.instanceof(Structure).check(z.superRefine((val, ctx) => {
     for (const [index, value] of val as Structure<z.infer<Idx>, z.infer<T>>) {
       const indexResult = indexSchema.safeParse(index);
@@ -92,7 +92,7 @@ export function zPreIndexedStructure<
 >(
   indexSchema: Idx,
   valueSchema: T,
-): z.ZodType<PreIndexedStructure<z.infer<Idx>, z.infer<T>>> {
+): z.ZodCustom<PreIndexedStructure<z.infer<Idx>, z.infer<T>>> {
   return z.instanceof(PreIndexedStructure).check(z.superRefine((val, ctx) => {
     for (
       const [index, value] of val as PreIndexedStructure<
@@ -184,7 +184,7 @@ export class MappedStructure<Idx, I, O, S extends Structure<Idx, I>>
 export function zHashStructure<Idx extends z.ZodType, T extends z.ZodType>(
   indexSchema: Idx,
   valueSchema: T,
-): z.ZodType<HashStructure<z.infer<Idx>, z.infer<T>>> {
+): z.ZodCustom<HashStructure<z.infer<Idx>, z.infer<T>>> {
   const map = z.map(indexSchema, valueSchema);
   return z.instanceof(HashStructure).check(z.superRefine((val, ctx) => {
     const mapResult = map.safeParse(
@@ -232,7 +232,7 @@ export function zIndexOneToOne<
   indexSchema: Idx,
   valueSchema: z.ZodType<T>,
   defaultUndefined?: D,
-): z.ZodType<IndexOneToOne<z.infer<Idx>, z.infer<T>, D>> {
+): z.ZodCustom<IndexOneToOne<z.infer<Idx>, z.infer<T>, D>> {
   return z.instanceof(IndexOneToOne).check(z.superRefine((val, ctx) => {
     const v = val as IndexOneToOne<z.infer<Idx>, z.infer<T>, D>;
     if ((v.getDefaultUndefined() ?? false) !== (defaultUndefined ?? false)) {
@@ -367,7 +367,7 @@ export function zIndexOneToMany<
   indexSchema: Idx,
   valueSchema: z.ZodType<T>,
   defaultEmptyArr?: boolean,
-): z.ZodType<IndexOneToMany<z.infer<Idx>, z.infer<T>>> {
+): z.ZodCustom<IndexOneToMany<z.infer<Idx>, z.infer<T>>> {
   return z.instanceof(IndexOneToMany).check(z.superRefine((val, ctx) => {
     const v = val as IndexOneToMany<z.infer<Idx>, z.infer<T>>;
     if ((v.getDefaultEmptyArr() ?? false) !== (defaultEmptyArr ?? false)) {
