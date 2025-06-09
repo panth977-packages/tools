@@ -42,6 +42,7 @@ export function zStructure<Idx extends z.ZodType, T extends z.ZodType>(
 export abstract class Structure<Idx, T> {
   abstract get(index: Idx): T;
   abstract [Symbol.iterator](): Iterator<[Idx, T]>;
+  abstract add(index: Idx, value: T): void;
   getValues(): T[] {
     const values: T[] = [];
     for (const [, value] of this) {
@@ -154,6 +155,11 @@ export class PreIndexedStructure<Idx, T> extends Structure<Idx, T> {
   override getValues(): T[] {
     return [...this.values];
   }
+  override add(index: Idx, value: T): void {
+    this.indexes.push(index);
+    this.values.push(value);
+    this.size++;
+  }
   getSize(): number {
     return this.size;
   }
@@ -173,6 +179,9 @@ export class MappedStructure<Idx, I, O, S extends Structure<Idx, I>>
   }
   override getIndexs(): Array<Idx> {
     return this.structure.getIndexs();
+  }
+  override add(_: Idx, __: O): void {
+    throw new Error("Cannot add on mapped structure");
   }
   *[Symbol.iterator](): Iterator<[Idx, O]> {
     for (const [index, value] of this.structure) {
@@ -214,6 +223,9 @@ export class HashStructure<Idx, T> extends Structure<Idx, T> {
   }
   override getIndexs(): Array<Idx> {
     return Array.from(this.hash.keys());
+  }
+  override add(index: Idx, value: T): void {
+    this.hash.set(index, value);
   }
   *[Symbol.iterator](): Iterator<[Idx, T]> {
     for (const [index, value] of this.hash) {
@@ -287,6 +299,12 @@ export abstract class IndexOneToOne<Idx, T, D extends boolean = false>
     }
     if (this.defaultUndefined) return undefined as never;
     throw new Error(`Index ${index} not found`);
+  }
+  override add(index: Idx, value: T): void {
+    if (index !== this.getIndex(value)) {
+      throw new Error(`Index ${index} does not match value ${value}`);
+    }
+    this.list.push(value);
   }
   override getValues(): Array<T> {
     return [...this.list];
@@ -433,6 +451,14 @@ export abstract class IndexOneToMany<Idx, T> extends Structure<Idx, Array<T>> {
       indexSet.add(key);
     }
     return Array.from(indexSet);
+  }
+  override add(index: Idx, value: Array<T>): void {
+    for (const item of value) {
+      if (index !== this.getIndex(item)) {
+        throw new Error(`Index ${index} does not match value ${value}`);
+      }
+    }
+    this.list.push(...value);
   }
   *[Symbol.iterator](): Iterator<[Idx, Array<T>]> {
     for (const ele of this.getIndexs()) {
