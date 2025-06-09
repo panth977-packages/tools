@@ -19,7 +19,7 @@ export function zStructure<Idx extends z.ZodType, T extends z.ZodType>(
       if (!indexResult.success) {
         for (const issue of indexResult.error.issues) {
           ctx.addIssue({
-            code: issue.code,
+            ...issue,
             message: `[Structure Key @ ${
               JSON.stringify(index)
             }] ${issue.message}`,
@@ -29,7 +29,7 @@ export function zStructure<Idx extends z.ZodType, T extends z.ZodType>(
       if (!valueResult.success) {
         for (const issue of valueResult.error.issues) {
           ctx.addIssue({
-            code: issue.code,
+            ...issue,
             message: `[Structure Value @ ${
               JSON.stringify(index)
             }] ${issue.message}`,
@@ -37,7 +37,7 @@ export function zStructure<Idx extends z.ZodType, T extends z.ZodType>(
         }
       }
     }
-  }));
+  })) as never;
 }
 export abstract class Structure<Idx, T> {
   abstract get(index: Idx): T;
@@ -105,7 +105,7 @@ export function zPreIndexedStructure<
       if (!indexResult.success) {
         for (const issue of indexResult.error.issues) {
           ctx.addIssue({
-            code: issue.code,
+            ...issue,
             message: `[Structure Key @ ${
               JSON.stringify(index)
             }] ${issue.message}`,
@@ -115,7 +115,7 @@ export function zPreIndexedStructure<
       if (!valueResult.success) {
         for (const issue of valueResult.error.issues) {
           ctx.addIssue({
-            code: issue.code,
+            ...issue,
             message: `[Structure Value @ ${
               JSON.stringify(index)
             }] ${issue.message}`,
@@ -123,7 +123,7 @@ export function zPreIndexedStructure<
         }
       }
     }
-  }));
+  })) as never;
 }
 export class PreIndexedStructure<Idx, T> extends Structure<Idx, T> {
   protected size: number;
@@ -193,12 +193,12 @@ export function zHashStructure<Idx extends z.ZodType, T extends z.ZodType>(
     if (!mapResult.success) {
       for (const issue of mapResult.error.issues) {
         ctx.addIssue({
-          code: issue.code,
+          ...issue,
           message: `[Hash] ${issue.message}`,
         });
       }
     }
-  }));
+  })) as never;
 }
 export class HashStructure<Idx, T> extends Structure<Idx, T> {
   protected hash: Map<Idx, T>;
@@ -250,7 +250,7 @@ export function zIndexOneToOne<
       if (!mapResult.success) {
         for (const issue of mapResult.error.issues) {
           ctx.addIssue({
-            code: issue.code,
+            ...issue,
             message: `[IndexOneToOne Value @${i}] ${issue.message}`,
           });
         }
@@ -259,13 +259,13 @@ export function zIndexOneToOne<
       if (!indexResult.success) {
         for (const issue of indexResult.error.issues) {
           ctx.addIssue({
-            code: issue.code,
+            ...issue,
             message: `[IndexOneToOne Index @${i}] ${issue.message}`,
           });
         }
       }
     }
-  }));
+  })) as never;
 }
 export abstract class IndexOneToOne<Idx, T, D extends boolean = false>
   extends Structure<Idx, D extends true ? T | undefined : T> {
@@ -384,7 +384,7 @@ export function zIndexOneToMany<
       if (!mapResult.success) {
         for (const issue of mapResult.error.issues) {
           ctx.addIssue({
-            code: issue.code,
+            ...issue,
             message: `[IndexOneToMany Value @${i}] ${issue.message}`,
           });
         }
@@ -393,13 +393,13 @@ export function zIndexOneToMany<
       if (!indexResult.success) {
         for (const issue of indexResult.error.issues) {
           ctx.addIssue({
-            code: issue.code,
+            ...issue,
             message: `[IndexOneToMany Index @${i}] ${issue.message}`,
           });
         }
       }
     }
-  }));
+  })) as never;
 }
 export abstract class IndexOneToMany<Idx, T> extends Structure<Idx, Array<T>> {
   protected list: Array<T>;
