@@ -106,7 +106,7 @@ export abstract class Structure<Idx, T> {
   }
 }
 
-type zPreIndexedStructure<Idx extends z.ZodType, T extends z.ZodType> =
+export type zPreIndexedStructure<Idx extends z.ZodType, T extends z.ZodType> =
   & z.ZodCustom<PreIndexedStructure<z.infer<Idx>, z.infer<T>>>
   & { index: Idx; value: T };
 export function zPreIndexedStructure<
@@ -212,7 +212,7 @@ export class MappedStructure<Idx, I, O, S extends Structure<Idx, I>>
   }
 }
 
-type zHashStructure<Idx extends z.ZodType, T extends z.ZodType> =
+export type zHashStructure<Idx extends z.ZodType, T extends z.ZodType> =
   & z.ZodCustom<HashStructure<z.infer<Idx>, z.infer<T>>>
   & { index: Idx; value: T };
 export function zHashStructure<Idx extends z.ZodType, T extends z.ZodType>(
@@ -265,7 +265,7 @@ export class HashStructure<Idx, T> extends Structure<Idx, T> {
     return new Map(this.hash);
   }
 }
-type zIndexOneToOne<
+export type zIndexOneToOne<
   Idx extends z.ZodType,
   T extends z.ZodType,
   D extends boolean = false,
