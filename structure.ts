@@ -7,37 +7,45 @@ import {
 } from "./exports.ts";
 
 import { z } from "zod/v4";
-
+export type zStructure<Idx extends z.ZodType, T extends z.ZodType> =
+  & z.ZodCustom<Structure<z.infer<Idx>, z.infer<T>>>
+  & { index: Idx; value: T };
 export function zStructure<Idx extends z.ZodType, T extends z.ZodType>(
   indexSchema: Idx,
   valueSchema: T,
-): z.ZodCustom<Structure<z.infer<Idx>, z.infer<T>>> {
-  return z.instanceof(Structure).check(z.superRefine((val, ctx) => {
-    for (const [index, value] of val as Structure<z.infer<Idx>, z.infer<T>>) {
-      const indexResult = indexSchema.safeParse(index);
-      const valueResult = valueSchema.safeParse(value);
-      if (!indexResult.success) {
-        for (const issue of indexResult.error.issues) {
-          ctx.addIssue({
-            ...issue,
-            message: `[Structure Key @ ${
-              JSON.stringify(index)
-            }] ${issue.message}`,
-          });
+): zStructure<Idx, T> {
+  const schema = z.instanceof(Structure<z.infer<Idx>, z.infer<T>>).check(
+    z.superRefine((val, ctx) => {
+      for (const [index, value] of val) {
+        const indexResult = indexSchema.safeParse(index);
+        const valueResult = valueSchema.safeParse(value);
+        if (!indexResult.success) {
+          for (const issue of indexResult.error.issues) {
+            ctx.addIssue({
+              ...issue,
+              message: `[Structure Key @ ${
+                JSON.stringify(index)
+              }] ${issue.message}`,
+            });
+          }
+        }
+        if (!valueResult.success) {
+          for (const issue of valueResult.error.issues) {
+            ctx.addIssue({
+              ...issue,
+              message: `[Structure Value @ ${
+                JSON.stringify(index)
+              }] ${issue.message}`,
+            });
+          }
         }
       }
-      if (!valueResult.success) {
-        for (const issue of valueResult.error.issues) {
-          ctx.addIssue({
-            ...issue,
-            message: `[Structure Value @ ${
-              JSON.stringify(index)
-            }] ${issue.message}`,
-          });
-        }
-      }
-    }
-  })) as never;
+    }),
+  );
+  return Object.assign(schema, {
+    index: indexSchema,
+    value: valueSchema,
+  });
 }
 export abstract class Structure<Idx, T> {
   abstract get(index: Idx): T;
@@ -74,57 +82,71 @@ export abstract class Structure<Idx, T> {
     }
     return record;
   }
-  toPreIndexed(): PreIndexedStructure<Idx, T> {
+  toPreIndexed(forIndexes?: Idx[]): PreIndexedStructure<Idx, T> {
     let size = 0;
     const indexes = [];
     const values = [];
-    for (const [index, value] of this) {
-      indexes.push(index);
-      values.push(value);
-      size++;
+    if (forIndexes !== undefined) {
+      for (const index of forIndexes) {
+        const value = this.get(index);
+        if (value !== undefined) {
+          indexes.push(index);
+          values.push(value);
+          size++;
+        }
+      }
+    } else {
+      for (const [index, value] of this) {
+        indexes.push(index);
+        values.push(value);
+        size++;
+      }
     }
     return new PreIndexedStructure(size, indexes, values);
   }
 }
 
+type zPreIndexedStructure<Idx extends z.ZodType, T extends z.ZodType> =
+  & z.ZodCustom<PreIndexedStructure<z.infer<Idx>, z.infer<T>>>
+  & { index: Idx; value: T };
 export function zPreIndexedStructure<
   Idx extends z.ZodType,
   T extends z.ZodType,
 >(
   indexSchema: Idx,
   valueSchema: T,
-): z.ZodCustom<PreIndexedStructure<z.infer<Idx>, z.infer<T>>> {
-  return z.instanceof(PreIndexedStructure).check(z.superRefine((val, ctx) => {
-    for (
-      const [index, value] of val as PreIndexedStructure<
-        z.infer<Idx>,
-        z.infer<T>
-      >
-    ) {
-      const indexResult = indexSchema.safeParse(index);
-      const valueResult = valueSchema.safeParse(value);
-      if (!indexResult.success) {
-        for (const issue of indexResult.error.issues) {
-          ctx.addIssue({
-            ...issue,
-            message: `[Structure Key @ ${
-              JSON.stringify(index)
-            }] ${issue.message}`,
-          });
+): zPreIndexedStructure<Idx, T> {
+  const schema = z.instanceof(PreIndexedStructure<z.infer<Idx>, z.infer<T>>)
+    .check(z.superRefine((val, ctx) => {
+      for (const [index, value] of val) {
+        const indexResult = indexSchema.safeParse(index);
+        const valueResult = valueSchema.safeParse(value);
+        if (!indexResult.success) {
+          for (const issue of indexResult.error.issues) {
+            ctx.addIssue({
+              ...issue,
+              message: `[Structure Key @ ${
+                JSON.stringify(index)
+              }] ${issue.message}`,
+            });
+          }
+        }
+        if (!valueResult.success) {
+          for (const issue of valueResult.error.issues) {
+            ctx.addIssue({
+              ...issue,
+              message: `[Structure Value @ ${
+                JSON.stringify(index)
+              }] ${issue.message}`,
+            });
+          }
         }
       }
-      if (!valueResult.success) {
-        for (const issue of valueResult.error.issues) {
-          ctx.addIssue({
-            ...issue,
-            message: `[Structure Value @ ${
-              JSON.stringify(index)
-            }] ${issue.message}`,
-          });
-        }
-      }
-    }
-  })) as never;
+    }));
+  return Object.assign(schema, {
+    index: indexSchema,
+    value: valueSchema,
+  });
 }
 export class PreIndexedStructure<Idx, T> extends Structure<Idx, T> {
   protected size: number;
@@ -190,24 +212,31 @@ export class MappedStructure<Idx, I, O, S extends Structure<Idx, I>>
   }
 }
 
+type zHashStructure<Idx extends z.ZodType, T extends z.ZodType> =
+  & z.ZodCustom<HashStructure<z.infer<Idx>, z.infer<T>>>
+  & { index: Idx; value: T };
 export function zHashStructure<Idx extends z.ZodType, T extends z.ZodType>(
   indexSchema: Idx,
   valueSchema: T,
-): z.ZodCustom<HashStructure<z.infer<Idx>, z.infer<T>>> {
+): zHashStructure<Idx, T> {
   const map = z.map(indexSchema, valueSchema);
-  return z.instanceof(HashStructure).check(z.superRefine((val, ctx) => {
-    const mapResult = map.safeParse(
-      (val as HashStructure<z.infer<Idx>, z.infer<T>>).getHash(),
-    );
-    if (!mapResult.success) {
-      for (const issue of mapResult.error.issues) {
-        ctx.addIssue({
-          ...issue,
-          message: `[Hash] ${issue.message}`,
-        });
+  const schema = z.instanceof(HashStructure<z.infer<Idx>, z.infer<T>>).check(
+    z.superRefine((val, ctx) => {
+      const mapResult = map.safeParse(val.getHash());
+      if (!mapResult.success) {
+        for (const issue of mapResult.error.issues) {
+          ctx.addIssue({
+            ...issue,
+            message: `[Hash] ${issue.message}`,
+          });
+        }
       }
-    }
-  })) as never;
+    }),
+  );
+  return Object.assign(schema, {
+    index: indexSchema,
+    value: valueSchema,
+  });
 }
 export class HashStructure<Idx, T> extends Structure<Idx, T> {
   protected hash: Map<Idx, T>;
@@ -236,6 +265,15 @@ export class HashStructure<Idx, T> extends Structure<Idx, T> {
     return new Map(this.hash);
   }
 }
+type zIndexOneToOne<
+  Idx extends z.ZodType,
+  T extends z.ZodType,
+  D extends boolean = false,
+> = z.ZodCustom<IndexOneToOne<z.infer<Idx>, z.infer<T>, D>> & {
+  index: Idx;
+  value: T;
+  defaultUndefined: D;
+};
 export function zIndexOneToOne<
   Idx extends z.ZodType,
   T extends z.ZodType,
@@ -244,40 +282,48 @@ export function zIndexOneToOne<
   indexSchema: Idx,
   valueSchema: z.ZodType<T>,
   defaultUndefined?: D,
-): z.ZodCustom<IndexOneToOne<z.infer<Idx>, z.infer<T>, D>> {
-  return z.instanceof(IndexOneToOne).check(z.superRefine((val, ctx) => {
-    const v = val as IndexOneToOne<z.infer<Idx>, z.infer<T>, D>;
-    if ((v.getDefaultUndefined() ?? false) !== (defaultUndefined ?? false)) {
-      ctx.addIssue({
-        code: "custom",
-        message:
-          `[IndexOneToOne] defaultUndefined must be ${(defaultUndefined ??
-            false)}`,
-      });
-    }
-    const list = v.getList();
-    for (let i = 0; i < list.length; i++) {
-      const item = list[i];
-      const mapResult = valueSchema.safeParse(item);
-      if (!mapResult.success) {
-        for (const issue of mapResult.error.issues) {
-          ctx.addIssue({
-            ...issue,
-            message: `[IndexOneToOne Value @${i}] ${issue.message}`,
-          });
+): zIndexOneToOne<Idx, T, D> {
+  const schema = z.instanceof(IndexOneToOne<z.infer<Idx>, z.infer<T>, D>).check(
+    z.superRefine((val, ctx) => {
+      if (
+        (val.getDefaultUndefined() ?? false) !== (defaultUndefined ?? false)
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message:
+            `[IndexOneToOne] defaultUndefined must be ${(defaultUndefined ??
+              false)}`,
+        });
+      }
+      const list = val.getList();
+      for (let i = 0; i < list.length; i++) {
+        const item = list[i];
+        const mapResult = valueSchema.safeParse(item);
+        if (!mapResult.success) {
+          for (const issue of mapResult.error.issues) {
+            ctx.addIssue({
+              ...issue,
+              message: `[IndexOneToOne Value @${i}] ${issue.message}`,
+            });
+          }
+        }
+        const indexResult = indexSchema.safeParse(val.getIndex(item));
+        if (!indexResult.success) {
+          for (const issue of indexResult.error.issues) {
+            ctx.addIssue({
+              ...issue,
+              message: `[IndexOneToOne Index @${i}] ${issue.message}`,
+            });
+          }
         }
       }
-      const indexResult = indexSchema.safeParse(v.getIndex(item));
-      if (!indexResult.success) {
-        for (const issue of indexResult.error.issues) {
-          ctx.addIssue({
-            ...issue,
-            message: `[IndexOneToOne Index @${i}] ${issue.message}`,
-          });
-        }
-      }
-    }
-  })) as never;
+    }),
+  );
+  return Object.assign(schema, {
+    index: indexSchema,
+    value: valueSchema,
+    defaultUndefined: defaultUndefined ?? false as D,
+  }) as never;
 }
 export abstract class IndexOneToOne<Idx, T, D extends boolean = false>
   extends Structure<Idx, D extends true ? T | undefined : T> {
@@ -377,7 +423,14 @@ export class IndexInnerKeyOneToOne<
     return getInnerProp(value, this.keyPath, this.split);
   }
 }
-
+export type zIndexOneToMany<
+  Idx extends z.ZodType,
+  T extends z.ZodType,
+> = z.ZodCustom<IndexOneToMany<z.infer<Idx>, z.infer<T>>> & {
+  index: Idx;
+  value: z.ZodType<T>;
+  defaultEmptyArr?: boolean;
+};
 export function zIndexOneToMany<
   Idx extends z.ZodType,
   T extends z.ZodType,
@@ -385,39 +438,46 @@ export function zIndexOneToMany<
   indexSchema: Idx,
   valueSchema: z.ZodType<T>,
   defaultEmptyArr?: boolean,
-): z.ZodCustom<IndexOneToMany<z.infer<Idx>, z.infer<T>>> {
-  return z.instanceof(IndexOneToMany).check(z.superRefine((val, ctx) => {
-    const v = val as IndexOneToMany<z.infer<Idx>, z.infer<T>>;
-    if ((v.getDefaultEmptyArr() ?? false) !== (defaultEmptyArr ?? false)) {
-      ctx.addIssue({
-        code: "custom",
-        message: `[IndexOneToMany] defaultEmptyArr must be ${(defaultEmptyArr ??
-          false)}`,
-      });
-    }
-    const list = v.getList();
-    for (let i = 0; i < list.length; i++) {
-      const item = list[i];
-      const mapResult = valueSchema.safeParse(item);
-      if (!mapResult.success) {
-        for (const issue of mapResult.error.issues) {
-          ctx.addIssue({
-            ...issue,
-            message: `[IndexOneToMany Value @${i}] ${issue.message}`,
-          });
+): zIndexOneToMany<Idx, T> {
+  const schema = z.instanceof(IndexOneToMany<z.infer<Idx>, z.infer<T>>).check(
+    z.superRefine((val, ctx) => {
+      if ((val.getDefaultEmptyArr() ?? false) !== (defaultEmptyArr ?? false)) {
+        ctx.addIssue({
+          code: "custom",
+          message:
+            `[IndexOneToMany] defaultEmptyArr must be ${(defaultEmptyArr ??
+              false)}`,
+        });
+      }
+      const list = val.getList();
+      for (let i = 0; i < list.length; i++) {
+        const item = list[i];
+        const mapResult = valueSchema.safeParse(item);
+        if (!mapResult.success) {
+          for (const issue of mapResult.error.issues) {
+            ctx.addIssue({
+              ...issue,
+              message: `[IndexOneToMany Value @${i}] ${issue.message}`,
+            });
+          }
+        }
+        const indexResult = indexSchema.safeParse(val.getIndex(item));
+        if (!indexResult.success) {
+          for (const issue of indexResult.error.issues) {
+            ctx.addIssue({
+              ...issue,
+              message: `[IndexOneToMany Index @${i}] ${issue.message}`,
+            });
+          }
         }
       }
-      const indexResult = indexSchema.safeParse(v.getIndex(item));
-      if (!indexResult.success) {
-        for (const issue of indexResult.error.issues) {
-          ctx.addIssue({
-            ...issue,
-            message: `[IndexOneToMany Index @${i}] ${issue.message}`,
-          });
-        }
-      }
-    }
-  })) as never;
+    }),
+  );
+  return Object.assign(schema, {
+    index: indexSchema,
+    value: valueSchema,
+    defaultEmptyArr,
+  });
 }
 export abstract class IndexOneToMany<Idx, T> extends Structure<Idx, Array<T>> {
   protected list: Array<T>;
