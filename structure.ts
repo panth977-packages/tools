@@ -182,6 +182,16 @@ export class PreIndexedStructure<Idx, T> extends Structure<Idx, T> {
     this.values.push(value);
     this.size++;
   }
+  set(index: Idx, value: T): void {
+    const i = this.indexes.findIndex((i) => i === index);
+    if (i === -1) {
+      this.indexes.push(index);
+      this.values.push(value);
+      this.size++;
+    } else {
+      this.values[i] = value;
+    }
+  }
   getSize(): number {
     return this.size;
   }
