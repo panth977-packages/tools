@@ -139,3 +139,34 @@ type Split<A, S extends string> = A extends string ? _Split<`${A}${S}`, S>
   }
   obj[lst as never] = value as never;
 }
+
+export function AccessKey<
+  T,
+  K extends KeyPath<T, DefaultSplitChar, DefaultPrimitive>,
+>(keyPath: K): (obj: T) => PropType<T, DefaultSplitChar, K>;
+export function AccessKey<
+  T,
+  S extends string,
+  K extends KeyPath<T, S, DefaultPrimitive>,
+>(split: S, keyPath: K): (obj: T) => PropType<T, S, K>;
+export function AccessKey(arg1: string, arg2?: string): (obj: any) => any {
+  if (arg2 === undefined) {
+    arg2 = arg1;
+    arg1 = DefaultSplitChar;
+  }
+  if (arg2.includes(arg1)) {
+    return (_InnerKey as any).bind(null, arg1, arg2);
+  } else {
+    return (_Key as any).bind(null, arg2);
+  }
+}
+function _Key<T, K extends keyof T>(key: K, obj: T): T[K] {
+  return obj[key];
+}
+function _InnerKey<
+  T,
+  S extends string,
+  K extends KeyPath<T, S, DefaultPrimitive>,
+>(split: S, keyPath: K, obj: T): PropType<T, S, K> {
+  return getInnerProp(obj, keyPath, split);
+}

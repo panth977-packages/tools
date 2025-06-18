@@ -1,54 +1,14 @@
 import {
   type DefaultPrimitive,
-  type DefaultSplitChar,
   getInnerProp,
   type KeyPath,
   type PropType,
 } from "./exports.ts";
 
 import { z } from "zod/v4";
-export type zStructure<Idx extends z.ZodType, T extends z.ZodType> =
-  & z.ZodCustom<Structure<z.infer<Idx>, z.infer<T>>>
-  & { index: Idx; value: T };
-export function zStructure<Idx extends z.ZodType, T extends z.ZodType>(
-  indexSchema: Idx,
-  valueSchema: T,
-): zStructure<Idx, T> {
-  const schema = z.instanceof(Structure<z.infer<Idx>, z.infer<T>>).check(
-    z.superRefine((val, ctx) => {
-      for (const [index, value] of val) {
-        const indexResult = indexSchema.safeParse(index);
-        const valueResult = valueSchema.safeParse(value);
-        if (!indexResult.success) {
-          for (const issue of indexResult.error.issues) {
-            ctx.addIssue({
-              ...issue,
-              message: `[Structure Key @ ${
-                JSON.stringify(index)
-              }] ${issue.message}`,
-            });
-          }
-        }
-        if (!valueResult.success) {
-          for (const issue of valueResult.error.issues) {
-            ctx.addIssue({
-              ...issue,
-              message: `[Structure Value @ ${
-                JSON.stringify(index)
-              }] ${issue.message}`,
-            });
-          }
-        }
-      }
-    }),
-  );
-  return Object.assign(schema, {
-    index: indexSchema,
-    value: valueSchema,
-  });
-}
 export abstract class Structure<Idx, T> {
   abstract get(index: Idx): T;
+  abstract has(index: Idx): boolean;
   abstract [Symbol.iterator](): Iterator<[Idx, T]>;
   abstract add(index: Idx, value: T): void;
   getValues(): T[] {
@@ -58,7 +18,7 @@ export abstract class Structure<Idx, T> {
     }
     return values;
   }
-  getIndexs(): Array<Idx> {
+  getIndexs(): Idx[] {
     const uniqueIndices = new Set<Idx>();
     for (const [index] of this) {
       uniqueIndices.add(index);
@@ -104,55 +64,96 @@ export abstract class Structure<Idx, T> {
     }
     return new PreIndexedStructure(size, indexes, values);
   }
+  static fromRecord<T>(
+    record: Record<string, T>,
+  ): PreIndexedStructure<string, T> {
+    const keys = Object.keys(record);
+    return new PreIndexedStructure(
+      keys.length,
+      keys,
+      keys.map((x) => record[x]),
+    );
+  }
+  static oneToOne<Idx, T>(
+    list: Array<T>,
+    getIndex: (obj: T) => Idx,
+  ): IndexOneToOne<Idx, T> {
+    return new IndexOneToOne(list, getIndex);
+  }
+  static oneToMany<Idx, T>(
+    list: Array<T>,
+    getIndex: (obj: T) => Idx,
+  ): IndexOneToMany<Idx, T> {
+    return new IndexOneToMany(list, getIndex);
+  }
+  static build<Idx, T>(): PreIndexedStructure<Idx, T> {
+    return new PreIndexedStructure<Idx, T>(0, [], []);
+  }
 }
 
 export type zPreIndexedStructure<Idx extends z.ZodType, T extends z.ZodType> =
-  & z.ZodCustom<PreIndexedStructure<z.infer<Idx>, z.infer<T>>>
+  & z.ZodPipe<
+    z.ZodCustom<PreIndexedStructure<z.infer<Idx>, z.infer<T>>>,
+    z.ZodTransform<
+      PreIndexedStructure<z.infer<Idx>, z.infer<T>>,
+      PreIndexedStructure<z.infer<Idx>, z.infer<T>>
+    >
+  >
   & { index: Idx; value: T };
-export function zPreIndexedStructure<
-  Idx extends z.ZodType,
-  T extends z.ZodType,
->(
-  indexSchema: Idx,
-  valueSchema: T,
-): zPreIndexedStructure<Idx, T> {
-  const schema = z.instanceof(PreIndexedStructure<z.infer<Idx>, z.infer<T>>)
-    .check(z.superRefine((val, ctx) => {
-      for (const [index, value] of val) {
-        const indexResult = indexSchema.safeParse(index);
-        const valueResult = valueSchema.safeParse(value);
-        if (!indexResult.success) {
-          for (const issue of indexResult.error.issues) {
-            ctx.addIssue({
-              ...issue,
-              message: `[Structure Key @ ${
-                JSON.stringify(index)
-              }] ${issue.message}`,
-            });
-          }
-        }
-        if (!valueResult.success) {
-          for (const issue of valueResult.error.issues) {
-            ctx.addIssue({
-              ...issue,
-              message: `[Structure Value @ ${
-                JSON.stringify(index)
-              }] ${issue.message}`,
-            });
-          }
-        }
-      }
-    }));
-  return Object.assign(schema, {
-    index: indexSchema,
-    value: valueSchema,
-  });
-}
 export class PreIndexedStructure<Idx, T> extends Structure<Idx, T> {
   protected size: number;
   protected indexes: Array<Idx>;
   protected values: Array<T>;
-  constructor(size: number, indexes: Array<Idx>, values: Array<T>) {
+  static zStructure<Idx extends z.ZodType, T extends z.ZodType>(
+    zIndex: Idx,
+    zValue: T,
+  ): zPreIndexedStructure<Idx, T> {
+    const schema = z.instanceof(PreIndexedStructure<z.infer<Idx>, z.infer<T>>)
+      .transform((val, ctx) => {
+        let newVal = new PreIndexedStructure<z.infer<Idx>, z.infer<T>>();
+        for (const [index, value] of val) {
+          const indexResult = zIndex.safeParse(index);
+          const valueResult = zValue.safeParse(value);
+          if (indexResult.success && valueResult.success) {
+            if (newVal instanceof PreIndexedStructure) {
+              newVal.add(indexResult.data, valueResult.data);
+            }
+            continue;
+          }
+          if (!indexResult.success) {
+            for (const issue of indexResult.error.issues) {
+              newVal = z.NEVER;
+              ctx.addIssue({
+                ...issue,
+                message: `[Structure Key @ ${
+                  JSON.stringify(index)
+                }] ${issue.message}`,
+              });
+            }
+          }
+          if (!valueResult.success) {
+            newVal = z.NEVER;
+            for (const issue of valueResult.error.issues) {
+              ctx.addIssue({
+                ...issue,
+                message: `[Structure Value @ ${
+                  JSON.stringify(index)
+                }] ${issue.message}`,
+              });
+            }
+          }
+        }
+        return newVal;
+      });
+    return Object.assign(schema, { index: zIndex, value: zValue });
+  }
+  constructor();
+  constructor(size: number, indexes: Array<Idx>, values: Array<T>);
+  constructor(
+    size: number = 0,
+    indexes: Array<Idx> = [],
+    values: Array<T> = [],
+  ) {
     super();
     this.size = size;
     this.indexes = indexes;
@@ -170,6 +171,9 @@ export class PreIndexedStructure<Idx, T> extends Structure<Idx, T> {
     for (let i = 0; i < this.size; i++) {
       yield [this.indexes[i], this.values[i]];
     }
+  }
+  override has(index: Idx): boolean {
+    return this.indexes.includes(index);
   }
   override getIndexs(): Idx[] {
     return [...this.indexes];
@@ -212,7 +216,10 @@ export class MappedStructure<Idx, I, O, S extends Structure<Idx, I>>
   override getIndexs(): Array<Idx> {
     return this.structure.getIndexs();
   }
-  override add(_: Idx, __: O): void {
+  override has(index: Idx): boolean {
+    return this.structure.has(index);
+  }
+  override add(_i: Idx, _v: O): void {
     throw new Error("Cannot add on mapped structure");
   }
   *[Symbol.iterator](): Iterator<[Idx, O]> {
@@ -222,35 +229,9 @@ export class MappedStructure<Idx, I, O, S extends Structure<Idx, I>>
   }
 }
 
-export type zHashStructure<Idx extends z.ZodType, T extends z.ZodType> =
-  & z.ZodCustom<HashStructure<z.infer<Idx>, z.infer<T>>>
-  & { index: Idx; value: T };
-export function zHashStructure<Idx extends z.ZodType, T extends z.ZodType>(
-  indexSchema: Idx,
-  valueSchema: T,
-): zHashStructure<Idx, T> {
-  const map = z.map(indexSchema, valueSchema);
-  const schema = z.instanceof(HashStructure<z.infer<Idx>, z.infer<T>>).check(
-    z.superRefine((val, ctx) => {
-      const mapResult = map.safeParse(val.getHash());
-      if (!mapResult.success) {
-        for (const issue of mapResult.error.issues) {
-          ctx.addIssue({
-            ...issue,
-            message: `[Hash] ${issue.message}`,
-          });
-        }
-      }
-    }),
-  );
-  return Object.assign(schema, {
-    index: indexSchema,
-    value: valueSchema,
-  });
-}
 export class HashStructure<Idx, T> extends Structure<Idx, T> {
   protected hash: Map<Idx, T>;
-  constructor(hash: Map<Idx, T>) {
+  constructor(hash: Map<Idx, T> = new Map()) {
     super();
     this.hash = hash;
   }
@@ -266,6 +247,9 @@ export class HashStructure<Idx, T> extends Structure<Idx, T> {
   override add(index: Idx, value: T): void {
     this.hash.set(index, value);
   }
+  override has(index: Idx): boolean {
+    return this.hash.has(index);
+  }
   *[Symbol.iterator](): Iterator<[Idx, T]> {
     for (const [index, value] of this.hash) {
       yield [index, value];
@@ -275,77 +259,47 @@ export class HashStructure<Idx, T> extends Structure<Idx, T> {
     return new Map(this.hash);
   }
 }
-export type zIndexOneToOne<
-  Idx extends z.ZodType,
-  T extends z.ZodType,
-  D extends boolean = false,
-> = z.ZodCustom<IndexOneToOne<z.infer<Idx>, z.infer<T>, D>> & {
-  index: Idx;
-  value: T;
-  defaultUndefined: D;
-};
-export function zIndexOneToOne<
-  Idx extends z.ZodType,
-  T extends z.ZodType,
-  D extends boolean = false,
->(
-  indexSchema: Idx,
-  valueSchema: z.ZodType<T>,
-  defaultUndefined?: D,
-): zIndexOneToOne<Idx, T, D> {
-  const schema = z.instanceof(IndexOneToOne<z.infer<Idx>, z.infer<T>, D>).check(
-    z.superRefine((val, ctx) => {
-      if (
-        (val.getDefaultUndefined() ?? false) !== (defaultUndefined ?? false)
-      ) {
-        ctx.addIssue({
-          code: "custom",
-          message:
-            `[IndexOneToOne] defaultUndefined must be ${(defaultUndefined ??
-              false)}`,
-        });
-      }
-      const list = val.getList();
-      for (let i = 0; i < list.length; i++) {
-        const item = list[i];
-        const mapResult = valueSchema.safeParse(item);
-        if (!mapResult.success) {
-          for (const issue of mapResult.error.issues) {
-            ctx.addIssue({
-              ...issue,
-              message: `[IndexOneToOne Value @${i}] ${issue.message}`,
-            });
-          }
-        }
-        const indexResult = indexSchema.safeParse(val.getIndex(item));
-        if (!indexResult.success) {
-          for (const issue of indexResult.error.issues) {
-            ctx.addIssue({
-              ...issue,
-              message: `[IndexOneToOne Index @${i}] ${issue.message}`,
-            });
-          }
-        }
-      }
-    }),
-  );
-  return Object.assign(schema, {
-    index: indexSchema,
-    value: valueSchema,
-    defaultUndefined: defaultUndefined ?? false as D,
-  }) as never;
-}
-export abstract class IndexOneToOne<Idx, T, D extends boolean = false>
-  extends Structure<Idx, D extends true ? T | undefined : T> {
-  protected list: Array<T>;
-  protected defaultUndefined?: D;
-  constructor(list: Array<T>, defaultUndefined?: D) {
+/**
+ * @example
+ * ```ts
+ * const rows = await pg.query(`SELECT * FROM users WHERE ID IN ($1, $2, $3)`, [1, 2, 3]);
+ * const users = new IndexOneToOne(rows, AccessKey("id")); // third arg tells if to return undefined on missing index
+ * const user1 = users.get(1); // User { id: 1, name: 'John' }
+ * const user10 = users.get(10); // undefined
+ * ```
+ */
+export class IndexOneToOne<Idx, T> extends Structure<Idx, T> {
+  constructor(protected list: Array<T>, protected getIndex: (obj: T) => Idx) {
     super();
-    this.list = list;
-    this.defaultUndefined = defaultUndefined;
   }
-  abstract getIndex(value: T): Idx;
-  override get(index: Idx): D extends true ? T | undefined : T {
+  static Key<T, K extends keyof T>(key: K): (obj: T) => T[K] {
+    return (this._Key<T, K>).bind(this, key);
+  }
+  private static _Key<T, K extends keyof T>(key: K, obj: T): T[K] {
+    return obj[key];
+  }
+  static InnerKey<
+    T,
+    S extends string,
+    K extends KeyPath<T, S, DefaultPrimitive>,
+  >(split: S, keyPath: K): (obj: T) => PropType<T, S, K> {
+    return (this._InnerKey<T, S, K>).bind(this, split, keyPath);
+  }
+  private static _InnerKey<
+    T,
+    S extends string,
+    K extends KeyPath<T, S, DefaultPrimitive>,
+  >(split: S, keyPath: K, obj: T): PropType<T, S, K> {
+    return getInnerProp(obj, keyPath, split);
+  }
+  override get(index: Idx): T {
+    const val = this.oGet(index);
+    if (val === undefined) {
+      throw new Error(`Index ${index} not found`);
+    }
+    return val;
+  }
+  oGet(index: Idx): T | undefined {
     for (let i = 0; i < this.list.length; i++) {
       const value = this.list[i];
       const key = this.getIndex(value);
@@ -353,14 +307,21 @@ export abstract class IndexOneToOne<Idx, T, D extends boolean = false>
         return value;
       }
     }
-    if (this.defaultUndefined) return undefined as never;
-    throw new Error(`Index ${index} not found`);
+    return undefined;
   }
   override add(index: Idx, value: T): void {
     if (index !== this.getIndex(value)) {
       throw new Error(`Index ${index} does not match value ${value}`);
     }
     this.list.push(value);
+  }
+  override has(index: Idx): boolean {
+    for (const ele of this.list) {
+      if (this.getIndex(ele) === index) {
+        return true;
+      }
+    }
+    return false;
   }
   override getValues(): Array<T> {
     return [...this.list];
@@ -380,125 +341,21 @@ export abstract class IndexOneToOne<Idx, T, D extends boolean = false>
   getList(): Array<T> {
     return [...this.list];
   }
-  getDefaultUndefined(): D {
-    return this.defaultUndefined ?? (false as D);
-  }
-}
-/**
- * @example
- * ```ts
- * const rows = await pg.query(`SELECT * FROM users WHERE ID IN ($1, $2, $3)`, [1, 2, 3]);
- * const users = new IndexKeyOneToOne(rows, "id", true); // third arg tells if to return undefined on missing index
- * const user1 = users.get(1); // User { id: 1, name: 'John' }
- * const user10 = users.get(10); // undefined
- * ```
- */
-export class IndexKeyOneToOne<
-  T,
-  K extends keyof T,
-  D extends boolean = false,
-> extends IndexOneToOne<T[K], T, D> {
-  protected indexKey: K;
-  constructor(list: T[], indexKey: K, defaultUndefined?: D) {
-    super(list, defaultUndefined);
-    this.indexKey = indexKey;
-  }
-  override getIndex(value: T): T[K] {
-    return value[this.indexKey];
-  }
 }
 
 /**
  * @example
  * ```ts
- * const rows = await pg.query(`SELECT * FROM sensors WHERE device_id = $1`, [1]);
- * const sensors = new IndexInnerKeyOneToOne(rows, "options.parameter.key");
- * const co2Sensor = sensors.get('CO2');
+ * const rows = await pg.query(`SELECT * FROM sensors WHERE device_id IN ($1, $2)`, [1, 2]);
+ * const sensors = new IndexOneToMany(rows, AccessKey("device_id"));
+ * const device1Sensors = sensors.get(1);
  * ```
  */
-export class IndexInnerKeyOneToOne<
-  T,
-  K extends KeyPath<T, S, DefaultPrimitive>,
-  S extends string = DefaultSplitChar,
-  D extends boolean = false,
-> extends IndexOneToOne<PropType<T, S, K>, T, D> {
-  protected keyPath: K;
-  protected split?: S;
-  constructor(list: Array<T>, keyPath: K, split?: S, defaultUndefined?: D) {
-    super(list, defaultUndefined);
-    this.keyPath = keyPath;
-    this.split = split;
-  }
-  override getIndex(value: T): PropType<T, S, K> {
-    return getInnerProp(value, this.keyPath, this.split);
-  }
-}
-export type zIndexOneToMany<
-  Idx extends z.ZodType,
-  T extends z.ZodType,
-> = z.ZodCustom<IndexOneToMany<z.infer<Idx>, z.infer<T>>> & {
-  index: Idx;
-  value: z.ZodType<T>;
-  defaultEmptyArr?: boolean;
-};
-export function zIndexOneToMany<
-  Idx extends z.ZodType,
-  T extends z.ZodType,
->(
-  indexSchema: Idx,
-  valueSchema: z.ZodType<T>,
-  defaultEmptyArr?: boolean,
-): zIndexOneToMany<Idx, T> {
-  const schema = z.instanceof(IndexOneToMany<z.infer<Idx>, z.infer<T>>).check(
-    z.superRefine((val, ctx) => {
-      if ((val.getDefaultEmptyArr() ?? false) !== (defaultEmptyArr ?? false)) {
-        ctx.addIssue({
-          code: "custom",
-          message:
-            `[IndexOneToMany] defaultEmptyArr must be ${(defaultEmptyArr ??
-              false)}`,
-        });
-      }
-      const list = val.getList();
-      for (let i = 0; i < list.length; i++) {
-        const item = list[i];
-        const mapResult = valueSchema.safeParse(item);
-        if (!mapResult.success) {
-          for (const issue of mapResult.error.issues) {
-            ctx.addIssue({
-              ...issue,
-              message: `[IndexOneToMany Value @${i}] ${issue.message}`,
-            });
-          }
-        }
-        const indexResult = indexSchema.safeParse(val.getIndex(item));
-        if (!indexResult.success) {
-          for (const issue of indexResult.error.issues) {
-            ctx.addIssue({
-              ...issue,
-              message: `[IndexOneToMany Index @${i}] ${issue.message}`,
-            });
-          }
-        }
-      }
-    }),
-  );
-  return Object.assign(schema, {
-    index: indexSchema,
-    value: valueSchema,
-    defaultEmptyArr,
-  });
-}
-export abstract class IndexOneToMany<Idx, T> extends Structure<Idx, Array<T>> {
-  protected list: Array<T>;
-  protected defaultEmptyArr?: boolean;
-  constructor(list: Array<T>, defaultEmptyArr?: boolean) {
+export class IndexOneToMany<Idx, T> extends Structure<Idx, Array<T>> {
+  constructor(protected list: Array<T>, protected getIndex: (obj: T) => Idx) {
     super();
-    this.list = list;
-    this.defaultEmptyArr = defaultEmptyArr;
   }
-  abstract getIndex(value: T): Idx;
-  override get(index: Idx): Array<T> {
+  oGet(index: Idx): Array<T> {
     const arr = [];
     for (let i = 0; i < this.list.length; i++) {
       const value = this.list[i];
@@ -507,11 +364,22 @@ export abstract class IndexOneToMany<Idx, T> extends Structure<Idx, Array<T>> {
         arr.push(value);
       }
     }
+    return arr;
+  }
+  override get(index: Idx): T[] {
+    const arr = this.oGet(index);
     if (arr.length === 0) {
-      if (this.defaultEmptyArr) return arr;
       throw new Error(`Index ${index} not found`);
     }
     return arr;
+  }
+  override has(index: Idx): boolean {
+    for (const ele of this.list) {
+      if (this.getIndex(ele) === index) {
+        return true;
+      }
+    }
+    return false;
   }
   override getIndexs(): Array<Idx> {
     const indexSet = new Set<Idx>();
@@ -530,107 +398,51 @@ export abstract class IndexOneToMany<Idx, T> extends Structure<Idx, Array<T>> {
     }
     this.list.push(...value);
   }
-  *[Symbol.iterator](): Iterator<[Idx, Array<T>]> {
-    for (const ele of this.getIndexs()) {
-      yield [ele, this.get(ele)];
+  [Symbol.iterator](): Iterator<[Idx, Array<T>]> {
+    const entries: [Idx, T[]][] = [];
+    loop: for (const ele of this.list) {
+      const id = this.getIndex(ele);
+      for (let i = 0; i < entries.length; i++) {
+        if (entries[i][0] === id) {
+          entries[i][1].push(ele);
+          continue loop;
+        }
+      }
+      entries.push([id, [ele]]);
     }
+    return entries[Symbol.iterator]();
   }
-  mapIndexKeyOneToOne<D extends boolean = false>(
-    indexKey: keyof T,
-    defaultEmptyArr?: D,
-  ): MappedStructure<Idx, T[], IndexKeyOneToOne<T, keyof T, D>, this> {
-    return this.map((list) =>
-      new IndexKeyOneToOne(list, indexKey, defaultEmptyArr)
-    );
+  private static _mapIndexOneToOne<T, Idx>(
+    getIndex: (obj: T) => Idx,
+    list: Array<T>,
+  ) {
+    return new IndexOneToOne(list, getIndex);
   }
-  mapIndexInnerOneToOne<
-    K extends KeyPath<T, S, DefaultPrimitive>,
-    S extends string = DefaultSplitChar,
-    D extends boolean = false,
-  >(
-    indexKey: K,
-    splitChar?: S,
-    defaultEmptyArr?: D,
-  ): MappedStructure<Idx, T[], IndexInnerKeyOneToOne<T, K, S, D>, this> {
-    return this.map((list) =>
-      new IndexInnerKeyOneToOne(list, indexKey, splitChar, defaultEmptyArr)
-    );
+  private static _mapIndexOneToMany<T, Idx>(
+    getIndex: (obj: T) => Idx,
+    list: Array<T>,
+  ) {
+    return new IndexOneToMany(list, getIndex);
   }
-  mapIndexKeyOneToMany(
-    indexKey: keyof T,
-    defaultEmptyArr?: boolean,
-  ): MappedStructure<Idx, T[], IndexKeyOneToMany<T, keyof T>, this> {
-    return this.map((list) =>
-      new IndexKeyOneToMany(list, indexKey, defaultEmptyArr)
+  mapIndexOneToOne<Idx2>(
+    getIndex: (obj: T) => Idx2,
+  ): MappedStructure<Idx, T[], IndexOneToOne<Idx2, T>, this> {
+    const mapper = (IndexOneToMany._mapIndexOneToOne<T, Idx2>).bind(
+      IndexOneToMany,
+      getIndex,
     );
+    return this.map(mapper);
   }
-  mapIndexInnerOneToMany<
-    K extends KeyPath<T, S, DefaultPrimitive>,
-    S extends string = DefaultSplitChar,
-  >(
-    indexKey: K,
-    splitChar?: S,
-    defaultEmptyArr?: boolean,
-  ): MappedStructure<Idx, T[], IndexInnerKeyOneToMany<T, K, S>, this> {
-    return this.map((list) =>
-      new IndexInnerKeyOneToMany(list, indexKey, splitChar, defaultEmptyArr)
+  mapIndexOneToMany<Idx2>(
+    getIndex: (obj: T) => Idx2,
+  ): MappedStructure<Idx, T[], IndexOneToMany<Idx2, T>, this> {
+    const mapper = (IndexOneToMany._mapIndexOneToMany<T, Idx2>).bind(
+      IndexOneToMany,
+      getIndex,
     );
+    return this.map(mapper);
   }
   getList(): Array<T> {
     return [...this.list];
-  }
-  getDefaultEmptyArr(): boolean {
-    return this.defaultEmptyArr ?? false;
-  }
-}
-
-/**
- * @example
- * ```ts
- * const rows = await pg.query(`SELECT * FROM sensors WHERE device_id IN ($1, $2)`, [1, 2]);
- * const sensors = new IndexKeyOneToMany(rows, "device_id");
- * const device1Sensors = sensors.get(1);
- * ```
- */
-export class IndexKeyOneToMany<T, K extends keyof T>
-  extends IndexOneToMany<T[K], T> {
-  protected indexKey: K;
-  constructor(list: T[], indexKey: K, defaultEmptyArr?: boolean) {
-    super(list, defaultEmptyArr);
-    this.indexKey = indexKey;
-  }
-  override getIndex(value: T): T[K] {
-    return value[this.indexKey];
-  }
-}
-
-/**
- * @example
- * ```ts
- * const rows = await pg.query(`SELECT * FROM sensors WHERE device_id IN ($1, $2)`, [1, 2]);
- * const sensors = new IndexInnerKeyOneToMany(rows, "options.parameter.key").mapIndexKeyOneToOne("device_id");
- * const device1CO2Sensor = sensors.get('CO2').get(1);
- * const PM25Sensors = sensors.get('PM2.5').getList();
- * ```
- */
-export class IndexInnerKeyOneToMany<
-  T,
-  K extends KeyPath<T, S, DefaultPrimitive>,
-  S extends string = DefaultSplitChar,
-> extends IndexOneToMany<PropType<T, S, K>, T> {
-  protected keyPath: K;
-  protected split?: S;
-  constructor(
-    list: Array<T>,
-    keyPath: K,
-    split?: S,
-    defaultEmptyArr?: boolean,
-  ) {
-    super(list, defaultEmptyArr);
-    this.keyPath = keyPath;
-    this.split = split;
-  }
-  override getIndex(value: T): PropType<T, S, K> {
-    return getInnerProp(value, this.keyPath, this.split);
   }
 }

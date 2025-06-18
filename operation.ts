@@ -1,11 +1,6 @@
-import {
-  type DefaultPrimitive,
-  DefaultSplitChar,
-  getInnerProp,
-  type KeyPath,
-  type PropType,
-} from "./basic.ts";
-import { IndexInnerKeyOneToMany } from "./structure.ts";
+import { DefaultSplitChar } from "./basic.ts";
+import { IndexOneToMany } from "./structure.ts";
+
 /**
  * @example
  * ```ts
@@ -19,48 +14,37 @@ import { IndexInnerKeyOneToMany } from "./structure.ts";
  * sortedObjArr.map(x => x.prop2); // ['z', 'x', 'y, 'w']
  * ```
  */
-export function sortList<
-  T extends Record<string, any>,
-  K extends KeyPath<T, S, P>,
-  S extends string = DefaultSplitChar,
-  P = DefaultPrimitive,
->(
+export function sortList<T extends Record<string, any>>(
   rows: T[],
+  getVal: (val: T) => number,
   mode:
     | "ASC"
     | "DESC"
-    | ((a: PropType<T, S, K>, b: PropType<T, S, K>) => number),
-  keyPath: K,
-  split?: S,
+    | ((a: number, b: number) => number),
   algorithm?: "default" | "bucket",
 ): T[] {
   if (rows.length < 2) return rows;
   if (!algorithm || algorithm === "default") {
-    return rows
-      .map((r) => ({
-        r,
-        v: getInnerProp(r, keyPath, split) as number,
-      }))
+    return rows.map((x) => [getVal(x), x] as const)
       .sort(
         mode === "DESC"
-          ? (a, b) => b.v - a.v
+          ? (a, b) => b[0] - a[0]
           : mode === "ASC"
-          ? (a, b) => a.v - b.v
-          : (a, b) => mode(a.v as PropType<T, S, K>, b.v as PropType<T, S, K>),
+          ? (a, b) => a[0] - b[0]
+          : (a, b) => mode(a[0], b[0]),
       )
-      .map((x) => x.r);
+      .map((x) => x[1]);
   }
   if (algorithm === "bucket") {
-    const bucket = new IndexInnerKeyOneToMany(rows, keyPath, split).toRecord();
-    return (Object.keys(bucket) as any[] as number[])
+    return [...new IndexOneToMany(rows, getVal)]
       .sort(
         mode === "DESC"
-          ? (a, b) => b - a
+          ? (a, b) => b[0] - a[0]
           : mode === "ASC"
-          ? (a, b) => a - b
-          : (a, b) => mode(a as PropType<T, S, K>, b as PropType<T, S, K>),
+          ? (a, b) => a[0] - b[0]
+          : (a, b) => mode(a[0], b[0]),
       )
-      .reduce<T[]>((x, y) => x.concat(bucket[y]), []);
+      .flatMap((x) => x[1]);
   }
   throw new Error("unimplemented operation found!");
 }
