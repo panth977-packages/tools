@@ -153,52 +153,88 @@ export class PubSub<Z extends z.ZodType> {
  * @example
  * ```ts
  * const start = Date.now();
- * const myFunc = TOOLS.CreateBatchProcessor(5000, async function (args: number[]) {
- *   return arg.map(x => x ** 2);
- * })
- * myFunc(10); // 100, after 5 sec
- * myFunc(20); // 400, after 5 sec
- * myFunc(5); // 25, after 5 sec
- * setTimeout(() => myFunc(3), 1000); // 9, after 5 sec
- * setTimeout(() => myFunc(4), 6000); // 16, after 11 sec
- * setTimeout(() => myFunc(8), 10000); // 64, after 11 sec
+ * const myFunc = new CreateBatch<number, string>((args, cb) => {
+ *   cb(["Data", args.map((x) => `${x} => ${x ** 2}`)]);
+ * }, 5000).$();
+ * myFunc("async", 10); // 100, after 5 sec
+ * myFunc("async", 20); // 400, after 5 sec
+ * myFunc("cb", 5, console.log); // 25, after 5 sec
+ * setTimeout(() => myFunc("async", 3), 1000); // 9, after 5 sec
+ * setTimeout(() => myFunc("async", 4), 6000); // 16, after 11 sec
+ * setTimeout(() => myFunc("async", 8), 10000); // 64, after 11 sec
  * ```
  */
-export function CreateBatchProcessor<A, R>({
-  delayInMs,
-  implementation,
-}: {
-  delayInMs: number;
-  implementation: (arg: A[]) => Promise<R[]>;
-}): (arg: A) => Promise<R> {
-  let queue: {
-    arg: A;
-    resolve: (result: R) => void;
-    reject: (error: unknown) => void;
-  }[] = [];
-  let timer: any = null;
-
-  const processQueue = async () => {
-    const currentQueue = [...queue];
-    queue = []; // Clear the queue
-    timer = null;
-
+export class CreateBatch<A, R> {
+  protected queue: [A, (r: ["Error", unknown] | ["Data", R]) => void][] = [];
+  protected timer: null | ReturnType<typeof setTimeout> = null;
+  constructor(
+    protected implementation: (
+      arg: A[],
+      cb: (r: ["Error", unknown] | ["Data", R[]]) => void,
+    ) => void,
+    protected delayInMs: number,
+  ) {
+  }
+  protected processQueue() {
+    const args = this.queue.map((i) => i[0]);
+    const cbs = this.queue.map((i) => i[1]);
+    this.queue = [];
+    this.timer = null;
     try {
-      const args = currentQueue.map((item) => item.arg);
-      const results = await implementation(args); // Process batch
-      currentQueue.forEach((item, index) => item.resolve(results[index])); // Resolve individual promises
+      this.implementation(args, (r) => {
+        if (r[0] === "Data") {
+          cbs.forEach((cb, index) => cb(["Data", r[1][index]]));
+        } else {
+          cbs.forEach((cb) => cb(["Error", r[1]]));
+        }
+      });
     } catch (error) {
-      currentQueue.forEach((item) => item.reject(error)); // Reject if error occurs
+      cbs.forEach((cb) => cb(["Error", error]));
     }
-  };
+  }
 
-  return function (arg: A): Promise<R> {
-    return new Promise<R>((resolve, reject) => {
-      queue.push({ arg, resolve, reject });
-
-      if (!timer) {
-        timer = setTimeout(processQueue, delayInMs); // Set timer if not already set
-      }
-    });
-  };
+  private static promisify<R>(
+    res: (value: R) => void,
+    rej: (error: unknown) => void,
+    r: ["Error", unknown] | ["Data", R],
+  ) {
+    if (r[0] === "Data") {
+      res(r[1]);
+    } else {
+      rej(r[1]);
+    }
+  }
+  private promisify(
+    arg: A,
+    res: (value: R) => void,
+    rej: (error: unknown) => void,
+  ) {
+    this.queue.push([
+      arg,
+      (CreateBatch.promisify<R>).bind(CreateBatch, res, rej),
+    ]);
+    this.timer ??= setTimeout(this.processQueue.bind(this), this.delayInMs);
+  }
+  runJob(type: "async", arg: A): Promise<R>;
+  runJob(
+    type: "cb",
+    arg: A,
+    cb: (r: ["Error", unknown] | ["Data", R]) => void,
+  ): void;
+  runJob(
+    type: "async" | "cb",
+    arg: A,
+    cb?: (r: ["Error", unknown] | ["Data", R]) => void,
+  ): Promise<R> | void {
+    if (type === "async") {
+      return new Promise(this.promisify.bind(this, arg));
+    } else {
+      if (!cb) throw new Error("Need [cb] in cb mode.");
+      this.queue.push([arg, cb]);
+      this.timer ??= setTimeout(this.processQueue.bind(this), this.delayInMs);
+    }
+  }
+  $(): this["runJob"] {
+    return this.runJob.bind(this);
+  }
 }
