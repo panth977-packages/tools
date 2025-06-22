@@ -225,7 +225,7 @@ export class PStream<T> {
     this.endCb.push(cb);
     return this;
   }
-  flushData(): this {
+  private flushData(): this {
     if (this.unflusedData === undefined) return this;
     if (this.nextCb === undefined) return this;
     for (const data of this.unflusedData) {
@@ -312,13 +312,10 @@ export class PStream<T> {
     if (bindCancel) {
       stream.oncancel(this.cancel.bind(this));
     }
-    const listner = (PStream._map<T, TResult1>).bind(
-      PStream,
-      stream,
-      map,
-      onerror,
+    this.listen(
+      (PStream._map<T, TResult1>)
+        .bind(PStream, stream, map, onerror),
     );
-    this.onnext(this._listen.bind(this, listner, 0));
     return stream;
   }
   // --- statics ---
