@@ -14,7 +14,7 @@ export async function SettleAllPromise({
       } catch (err) {
         errors[key] = err;
       }
-    })
+    }),
   );
   return {
     errors,
@@ -43,3 +43,12 @@ export async function SettleAllPromise({
 export async function delay(ms: number = 0) {
   await new Promise((r) => setTimeout(r, ms));
 }
+
+export function isPromiseLike(process: unknown): process is PromiseLike<any> {
+  return typeof process === "object" &&
+    process !== null &&
+    "then" in process &&
+    typeof process.then === "function";
+}
+
+export function VoidFn(): void {}

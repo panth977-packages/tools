@@ -8,5 +8,6 @@ export * from "./operation.ts";
 export * from "./structure.ts";
 export * from "./scheduler.ts";
 export * from "./encode.ts";
-export * from "./promise.ts";
-export * from "./effects.ts";
+export * from "./utils.ts";
+export * from "./ppromise.ts";
+export * from "./pstream.ts";
