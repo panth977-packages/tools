@@ -243,7 +243,7 @@ export class PPromise<T> implements PromiseLike<T> {
       promise.reject(error);
     }
   }
-  then<TResult1 = T, TResult2 = never, TResult3 = never>(
+  map<TResult1 = T, TResult2 = never, TResult3 = never>(
     onfulfilled?:
       | ((value: T) => TResult1 | PromiseLike<TResult1>)
       | null
@@ -252,11 +252,11 @@ export class PPromise<T> implements PromiseLike<T> {
       | ((reason: any) => TResult2 | PromiseLike<TResult2>)
       | null
       | undefined,
-    oncanceled:
+    oncanceled?:
       | (() => TResult3 | PromiseLike<TResult3>)
       | null
-      | undefined = PPromise.ThrowCancel,
-    bindCancel: boolean = true,
+      | undefined,
+    bindCancel?: boolean,
   ): PPromise<TResult1 | TResult2 | TResult3> {
     const promise = new PPromise<TResult1 | TResult2 | TResult3>(
       this.cancelable,
@@ -283,18 +283,25 @@ export class PPromise<T> implements PromiseLike<T> {
     }
     return promise;
   }
-  catchError<TResult = never, TResult3 = never>(
-    onrejected?:
-      | ((reason: any) => TResult | PromiseLike<TResult>)
-      | undefined
-      | null,
-    oncanceled:
-      | (() => TResult3 | PromiseLike<TResult3>)
+  then<TResult1 = T, TResult2 = never>(
+    onfulfilled?:
+      | ((value: T) => TResult1 | PromiseLike<TResult1>)
       | null
-      | undefined = PPromise.ThrowCancel,
-    bindCancel: boolean = true,
-  ): PPromise<T | TResult | TResult3> {
-    return this.then(null, onrejected, oncanceled, bindCancel);
+      | undefined,
+    onrejected?:
+      | ((reason: any) => TResult2 | PromiseLike<TResult2>)
+      | null
+      | undefined,
+  ): PPromise<TResult1 | TResult2> {
+    return this.map(onfulfilled, onrejected, PPromise.ThrowCancel, true);
+  }
+  catch<TResult2 = never>(
+    onrejected?:
+      | ((reason: any) => TResult2 | PromiseLike<TResult2>)
+      | null
+      | undefined,
+  ): PromiseLike<T | TResult2> {
+    return this.map(null, onrejected, PPromise.ThrowCancel, true);
   }
   catchCancel<TResult = never>(
     oncanceled?:
@@ -303,7 +310,7 @@ export class PPromise<T> implements PromiseLike<T> {
       | null,
     bindCancel: boolean = true,
   ): PPromise<T | TResult> {
-    return this.then(null, null, oncanceled, bindCancel);
+    return this.map(null, null, oncanceled, bindCancel);
   }
   // --- statics ---
   static resolve<T>(promise: PPromise<T>, value: T): PPromise<T>;
@@ -441,7 +448,13 @@ export class PPromise<T> implements PromiseLike<T> {
   }
   // --- utils ---
   static ThrowCancel(): never {
-    throw new Error("Process Was Canceled!");
+    throw new CancelError();
   }
   static VoidCancel(): void {}
+}
+
+class CancelError extends Error {
+  constructor() {
+    super("Process Was Canceled!");
+  }
 }

@@ -1,6 +1,3 @@
-import { isPromiseLike } from "./exports.ts";
-import { PPromise } from "./ppromise.ts";
-
 /**
  * ```ts
  * function traditionalAsyncCb(id: number, cb: (error: unknown, data: Record<string, number> | null) => void) {
@@ -275,75 +272,53 @@ export class PStream<T> {
     }
   }
   // --- pipe ---
-  private onDataNext(
-    then: (data: Awaited<T>) => void,
-    catchError: (error: unknown) => void,
-    data: T,
-  ) {
-    this.onnext(this.onDataNext.bind(this, then, catchError));
-    try {
-      if (isPromiseLike(data)) {
-        data.then(then, catchError);
-      } else {
-        then(data as Awaited<T>);
-      }
-    } catch (err) {
-      try {
-        catchError(err);
-      } catch (err) {
-        PStream.onError(err);
-      }
-    }
+  private _listen(cb: (data: T, i: number) => void, i: number, data: T) {
+    this.onnext(this._listen.bind(this, cb, i + 1));
+    cb(data, i);
   }
-  listen(
-    then: (data: Awaited<T>) => void,
-    catchError: (error: unknown) => void,
-    flush = true,
-  ): this {
-    this.onnext(this.onDataNext.bind(this, then, catchError));
-    if (flush) this.flushData();
+  listen(cb: (data: T, i: number) => void): this {
+    if (this.unflusedData === undefined) {
+      throw new Error("This stream has already started flushing...");
+    }
+    this.onnext(this._listen.bind(this, cb, 0));
+    this.flushData();
     return this;
   }
-  private static mapOnData(
-    stream: PStream<any>,
-    cb: (arg: any) => any | PromiseLike<any>,
-    x: any,
+  private static _map<T, TResult1>(
+    stream: PStream<TResult1>,
+    cb: (data: T, i: number) => TResult1,
+    onerror: undefined | ((reason: any) => void),
+    data: T,
+    i: number,
   ) {
-    const y = cb(x);
-    if (isPromiseLike(y)) {
-      stream.emit(PPromise.from(y));
-    } else {
-      stream.emit(PPromise.resolve(y));
+    try {
+      stream.emit(cb(data, i));
+    } catch (err) {
+      onerror?.(err);
     }
   }
-  private static mapOnErr(
-    stream: PStream<any>,
-    x: any,
-  ) {
-    stream.emit(PPromise.reject(x));
-  }
-  map<TResult1, TResult2 = never>(
-    onfulfilled: (value: Awaited<T>) => TResult1 | PromiseLike<TResult1>,
-    onrejected?:
-      | ((reason: any) => TResult2 | PromiseLike<TResult2>)
-      | null
-      | undefined,
+  map<TResult1>(
+    map: (data: T, i: number) => TResult1,
+    onerror?: (reason: any) => void,
     bindCancel = true,
-  ): PStream<PPromise<Awaited<TResult1> | Awaited<TResult2>>> {
-    const stream = new PStream<any>();
-    this.listen(
-      PStream.mapOnData.bind(PStream, stream, onfulfilled),
-      onrejected
-        ? PStream.mapOnData.bind(PStream, stream, onrejected)
-        : PStream.mapOnErr.bind(PStream, stream),
-      false,
-    );
+  ): PStream<TResult1> {
+    if (this.unflusedData === undefined) {
+      throw new Error("This stream has already started flushing...");
+    }
+    const stream = new PStream<TResult1>();
     this.oncancel(stream.cancel.bind(stream));
     this.onfinish(stream.resolve.bind(stream));
     this.onerror(stream.reject.bind(stream));
     if (bindCancel) {
       stream.oncancel(this.cancel.bind(this));
     }
+    const listner = (PStream._map<T, TResult1>).bind(
+      PStream,
+      stream,
+      map,
+      onerror,
+    );
+    this.onnext(this._listen.bind(this, listner, 0));
     return stream;
   }
   // --- statics ---
