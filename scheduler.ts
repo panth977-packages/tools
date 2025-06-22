@@ -89,7 +89,7 @@ export class PubSub<Z extends z.ZodType> {
  * ```
  */
 export class CreateBatch<A, R> {
-  protected queue: [A, PPromise<R>][] = [];
+  protected queue: (readonly [A, PPromise<R>])[] = [];
   protected timer: null | ReturnType<typeof setTimeout> = null;
   constructor(
     protected implementation: (arg: A[]) => PromiseLike<R[]>,
@@ -119,11 +119,19 @@ export class CreateBatch<A, R> {
       this.catch(promises, error);
     }
   }
+  private removeJob(job: CreateBatch<A, R>["queue"][number]) {
+    const i = this.queue.indexOf(job);
+    if (i > -1) {
+      this.queue.splice(i, 1);
+    }
+  }
   runJob(arg: A): PPromise<R> {
-    const pormise = new PPromise<R>();
-    this.queue.push([arg, pormise]);
+    const promise = new PPromise<R>(true);
+    const ele = [arg, promise] as const;
+    promise.oncancel(this.removeJob.bind(this, ele));
+    this.queue.push(ele);
     this.timer ??= setTimeout(this.processQueue.bind(this), this.delayInMs);
-    return pormise;
+    return promise;
   }
   $(): this["runJob"] {
     return this.runJob.bind(this);
