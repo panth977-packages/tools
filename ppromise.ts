@@ -77,8 +77,12 @@ export class PPromise<T> implements PromiseLike<T> {
       oncancel: promise.oncancel.bind(promise),
     };
   }
-  private resolve(data: T): void {
+  private resolve(data: T | PromiseLike<T>): void {
     if (this.dataCb === undefined) return;
+    if (isPromiseLike(data)) {
+      data.then(this.resolve.bind(this), this.reject.bind(this));
+      return;
+    }
     this.result = [1, data];
     for (const cb of this.dataCb) {
       try {
@@ -224,23 +228,29 @@ export class PPromise<T> implements PromiseLike<T> {
   }
   // --- pipe ---
   private static _pipe(
-    pipe: (data: any) => any,
+    ondata: (data: any) => any,
+    onerror: ((reason: any) => any) | null | undefined,
     promise: PPromise<any>,
     data: any,
   ): void {
-    let result;
     try {
-      result = pipe(data);
+      const result = ondata(data);
       if (isPromiseLike(result)) {
         result.then(
           promise.resolve.bind(promise),
-          promise.reject.bind(promise),
+          onerror
+            ? PPromise._pipe.bind(PPromise, onerror, null, promise)
+            : promise.reject.bind(promise),
         );
       } else {
         promise.resolve(result);
       }
     } catch (error) {
-      promise.reject(error);
+      if (onerror) {
+        PPromise._pipe(onerror, null, promise, error);
+      } else {
+        promise.reject(error);
+      }
     }
   }
   map<TResult1 = T, TResult2 = never, TResult3 = never>(
@@ -252,28 +262,33 @@ export class PPromise<T> implements PromiseLike<T> {
       | ((reason: any) => TResult2 | PromiseLike<TResult2>)
       | null
       | undefined,
-    oncanceled?:
-      | (() => TResult3 | PromiseLike<TResult3>)
-      | null
-      | undefined,
+    oncanceled?: (() => TResult3 | PromiseLike<TResult3>) | null | undefined,
     bindCancel?: boolean,
   ): PPromise<TResult1 | TResult2 | TResult3> {
     const promise = new PPromise<TResult1 | TResult2 | TResult3>(
       this.cancelable,
     );
     if (onfulfilled) {
-      this.ondata(PPromise._pipe.bind(PPromise, onfulfilled, promise));
+      this.ondata(
+        PPromise._pipe.bind(PPromise, onfulfilled, onrejected, promise),
+      );
     } else {
       this.ondata((promise as PPromise<any>).resolve.bind(promise));
     }
     if (onrejected) {
-      this.onerror(PPromise._pipe.bind(PPromise, onrejected, promise));
+      this.onerror(PPromise._pipe.bind(PPromise, onrejected, null, promise));
     } else {
       this.onerror(promise.reject.bind(promise));
     }
     if (oncanceled) {
       this.oncancel(
-        PPromise._pipe.bind(PPromise, oncanceled, promise, undefined),
+        PPromise._pipe.bind(
+          PPromise,
+          oncanceled,
+          onrejected,
+          promise,
+          undefined,
+        ),
       );
     } else {
       this.oncancel(promise.cancel.bind(promise));
@@ -304,18 +319,20 @@ export class PPromise<T> implements PromiseLike<T> {
     return this.map(null, onrejected, PPromise.ThrowCancel, true);
   }
   catchCancel<TResult = never>(
-    oncanceled?:
-      | (() => TResult | PromiseLike<TResult>)
-      | undefined
-      | null,
+    oncanceled?: (() => TResult | PromiseLike<TResult>) | undefined | null,
     bindCancel: boolean = true,
   ): PPromise<T | TResult> {
     return this.map(null, null, oncanceled, bindCancel);
   }
   // --- statics ---
-  static resolve<T>(promise: PPromise<T>, value: T): PPromise<T>;
-  static resolve<T>(value: T): PPromise<T>;
-  static resolve<T>(...args: [PPromise<T>, T] | [T]): PPromise<T> {
+  static resolve<T>(
+    promise: PPromise<T>,
+    value: T | PromiseLike<T>,
+  ): PPromise<T>;
+  static resolve<T>(value: T | PromiseLike<T>): PPromise<T>;
+  static resolve<T>(
+    ...args: [PPromise<T>, T | PromiseLike<T>] | [T | PromiseLike<T>]
+  ): PPromise<T> {
     if (args.length === 1) {
       const promise = new PPromise<T>(false);
       promise.resolve(args[0]);
@@ -341,7 +358,7 @@ export class PPromise<T> implements PromiseLike<T> {
   private static _allState(len: number) {
     return {
       cnt: 0,
-      finalCnt: len * (len + 1) / 2,
+      finalCnt: (len * (len + 1)) / 2,
       err: false,
       result: new Array(len),
       promise: new PPromise<any>(true),
