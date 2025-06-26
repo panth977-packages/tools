@@ -55,14 +55,14 @@ export class PubSub<Z extends z.ZodType> {
     return PPromise.allCompleted(jobs);
   }
 
-  private unlisten(cb: (event: z.infer<Z>) => PromiseLike<void>): void {
+  private unlisten(cb: (event: z.infer<Z>) => PromiseLike<any>): void {
     const i = this.listners.indexOf(cb);
     if (i !== -1) {
       this.listners.splice(i, 1);
     }
   }
 
-  subscribe(cb: (event: z.infer<Z>) => PromiseLike<void>): VoidFunction {
+  subscribe(cb: (event: z.infer<Z>) => PromiseLike<any>): VoidFunction {
     this.listners.push(cb);
     return this.unlisten.bind(this, cb);
   }

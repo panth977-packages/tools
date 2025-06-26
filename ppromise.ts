@@ -315,7 +315,7 @@ export class PPromise<T> implements PromiseLike<T> {
       | ((reason: any) => TResult2 | PromiseLike<TResult2>)
       | null
       | undefined,
-  ): PromiseLike<T | TResult2> {
+  ): PPromise<T | TResult2> {
     return this.map(null, onrejected, PPromise.ThrowCancel, true);
   }
   catchCancel<TResult = never>(
@@ -324,6 +324,9 @@ export class PPromise<T> implements PromiseLike<T> {
   ): PPromise<T | TResult> {
     return this.map(null, null, oncanceled, bindCancel);
   }
+  $then = this.then;
+  $catch = this.catch;
+  $catchCancel = this.catchCancel;
   // --- statics ---
   static resolve<T>(
     promise: PPromise<T>,
