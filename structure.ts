@@ -91,15 +91,16 @@ export abstract class Structure<Idx, T> {
   }
 }
 
-export type zPreIndexedStructure<Idx extends z.ZodType, T extends z.ZodType> =
-  & z.ZodPipe<
-    z.ZodCustom<PreIndexedStructure<z.infer<Idx>, z.infer<T>>>,
-    z.ZodTransform<
-      PreIndexedStructure<z.infer<Idx>, z.infer<T>>,
-      PreIndexedStructure<z.infer<Idx>, z.infer<T>>
-    >
+export type zPreIndexedStructure<
+  Idx extends z.ZodType,
+  T extends z.ZodType,
+> = z.ZodPipe<
+  z.ZodCustom<PreIndexedStructure<z.infer<Idx>, z.infer<T>>>,
+  z.ZodTransform<
+    PreIndexedStructure<z.infer<Idx>, z.infer<T>>,
+    PreIndexedStructure<z.infer<Idx>, z.infer<T>>
   >
-  & { index: Idx; value: T };
+> & { index: Idx; value: T };
 export class PreIndexedStructure<Idx, T> extends Structure<Idx, T> {
   protected size: number;
   protected indexes: Array<Idx>;
@@ -108,7 +109,8 @@ export class PreIndexedStructure<Idx, T> extends Structure<Idx, T> {
     zIndex: Idx,
     zValue: T,
   ): zPreIndexedStructure<Idx, T> {
-    const schema = z.instanceof(PreIndexedStructure<z.infer<Idx>, z.infer<T>>)
+    const schema = z
+      .instanceof(PreIndexedStructure<z.infer<Idx>, z.infer<T>>)
       .transform((val, ctx) => {
         let newVal = new PreIndexedStructure<z.infer<Idx>, z.infer<T>>();
         for (const [index, value] of val) {
@@ -125,9 +127,9 @@ export class PreIndexedStructure<Idx, T> extends Structure<Idx, T> {
               newVal = z.NEVER;
               ctx.addIssue({
                 ...issue,
-                message: `[Structure Key @ ${
-                  JSON.stringify(index)
-                }] ${issue.message}`,
+                message: `[Structure Key @ ${JSON.stringify(
+                  index,
+                )}] ${issue.message}`,
               });
             }
           }
@@ -136,9 +138,9 @@ export class PreIndexedStructure<Idx, T> extends Structure<Idx, T> {
             for (const issue of valueResult.error.issues) {
               ctx.addIssue({
                 ...issue,
-                message: `[Structure Value @ ${
-                  JSON.stringify(index)
-                }] ${issue.message}`,
+                message: `[Structure Value @ ${JSON.stringify(
+                  index,
+                )}] ${issue.message}`,
               });
             }
           }
@@ -146,6 +148,18 @@ export class PreIndexedStructure<Idx, T> extends Structure<Idx, T> {
         return newVal;
       });
     return Object.assign(schema, { index: zIndex, value: zValue });
+  }
+  static override oneToOne<Idx, T>(
+    list: Array<T>,
+    getIndex: (obj: T) => Idx,
+  ): PreIndexedStructure<Idx, T> {
+    return new IndexOneToOne(list, getIndex).toPreIndexed();
+  }
+  static override oneToMany<Idx, T>(
+    list: Array<T>,
+    getIndex: (obj: T) => Idx,
+  ): PreIndexedStructure<Idx, T[]> {
+    return new IndexOneToMany(list, getIndex).toPreIndexed();
   }
   constructor();
   constructor(size: number, indexes: Array<Idx>, values: Array<T>);
@@ -201,8 +215,12 @@ export class PreIndexedStructure<Idx, T> extends Structure<Idx, T> {
   }
 }
 
-export class MappedStructure<Idx, I, O, S extends Structure<Idx, I>>
-  extends Structure<Idx, O> {
+export class MappedStructure<
+  Idx,
+  I,
+  O,
+  S extends Structure<Idx, I>,
+> extends Structure<Idx, O> {
   protected structure: S;
   protected mapper: (value: I, key: Idx) => O;
   constructor(structure: S, mapper: (value: I, key: Idx) => O) {
@@ -269,7 +287,10 @@ export class HashStructure<Idx, T> extends Structure<Idx, T> {
  * ```
  */
 export class IndexOneToOne<Idx, T> extends Structure<Idx, T> {
-  constructor(protected list: Array<T>, protected getIndex: (obj: T) => Idx) {
+  constructor(
+    protected list: Array<T>,
+    protected getIndex: (obj: T) => Idx,
+  ) {
     super();
   }
   static Key<T, K extends keyof T>(key: K): (obj: T) => T[K] {
@@ -352,7 +373,10 @@ export class IndexOneToOne<Idx, T> extends Structure<Idx, T> {
  * ```
  */
 export class IndexOneToMany<Idx, T> extends Structure<Idx, Array<T>> {
-  constructor(protected list: Array<T>, protected getIndex: (obj: T) => Idx) {
+  constructor(
+    protected list: Array<T>,
+    protected getIndex: (obj: T) => Idx,
+  ) {
     super();
   }
   oGet(index: Idx): Array<T> {
