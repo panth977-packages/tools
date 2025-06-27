@@ -77,14 +77,14 @@ export abstract class Structure<Idx, T> {
   static oneToOne<Idx, T>(
     list: Array<T>,
     getIndex: (obj: T) => Idx,
-  ): IndexOneToOne<Idx, T> {
-    return new IndexOneToOne(list, getIndex);
+  ): PreIndexedStructure<Idx, T> {
+    return new IndexOneToOne(list, getIndex).toPreIndexed();
   }
   static oneToMany<Idx, T>(
     list: Array<T>,
     getIndex: (obj: T) => Idx,
-  ): IndexOneToMany<Idx, T> {
-    return new IndexOneToMany(list, getIndex);
+  ): PreIndexedStructure<Idx, T[]> {
+    return new IndexOneToMany(list, getIndex).toPreIndexed();
   }
   static build<Idx, T>(): PreIndexedStructure<Idx, T> {
     return new PreIndexedStructure<Idx, T>(0, [], []);
@@ -148,18 +148,6 @@ export class PreIndexedStructure<Idx, T> extends Structure<Idx, T> {
         return newVal;
       });
     return Object.assign(schema, { index: zIndex, value: zValue });
-  }
-  static override oneToOne<Idx, T>(
-    list: Array<T>,
-    getIndex: (obj: T) => Idx,
-  ): PreIndexedStructure<Idx, T> {
-    return new IndexOneToOne(list, getIndex).toPreIndexed();
-  }
-  static override oneToMany<Idx, T>(
-    list: Array<T>,
-    getIndex: (obj: T) => Idx,
-  ): PreIndexedStructure<Idx, T[]> {
-    return new IndexOneToMany(list, getIndex).toPreIndexed();
   }
   constructor();
   constructor(size: number, indexes: Array<Idx>, values: Array<T>);
