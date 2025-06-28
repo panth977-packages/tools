@@ -161,6 +161,15 @@ export class PreIndexedStructure<Idx, T> extends Structure<Idx, T> {
     this.indexes = indexes;
     this.values = values;
   }
+  oget(index: Idx): T | undefined {
+    for (let i = 0; i < this.size; i++) {
+      if (this.indexes[i] === index) {
+        return this.values[i];
+      }
+    }
+    return undefined;
+  }
+
   override get(index: Idx): T {
     for (let i = 0; i < this.size; i++) {
       if (this.indexes[i] === index) {
