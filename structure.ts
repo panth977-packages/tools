@@ -169,7 +169,6 @@ export class PreIndexedStructure<Idx, T> extends Structure<Idx, T> {
     }
     return undefined;
   }
-
   override get(index: Idx): T {
     for (let i = 0; i < this.size; i++) {
       if (this.indexes[i] === index) {
@@ -433,33 +432,67 @@ export class IndexOneToMany<Idx, T> extends Structure<Idx, Array<T>> {
     }
     return entries[Symbol.iterator]();
   }
-  private static _mapIndexOneToOne<T, Idx>(
-    getIndex: (obj: T) => Idx,
-    list: Array<T>,
+  private static _mapIndexOneToOne(
+    getIndex: (obj: any) => any,
+    preIndexed: boolean,
+    list: Array<any>,
   ) {
+    if (preIndexed) return new IndexOneToOne(list, getIndex).toPreIndexed();
     return new IndexOneToOne(list, getIndex);
   }
-  private static _mapIndexOneToMany<T, Idx>(
-    getIndex: (obj: T) => Idx,
-    list: Array<T>,
+  private static _mapIndexOneToMany(
+    getIndex: (obj: any) => any,
+    preIndexed: boolean,
+    list: Array<any>,
   ) {
+    if (preIndexed) return new IndexOneToMany(list, getIndex).toPreIndexed();
     return new IndexOneToMany(list, getIndex);
   }
   mapIndexOneToOne<Idx2>(
     getIndex: (obj: T) => Idx2,
-  ): MappedStructure<Idx, T[], IndexOneToOne<Idx2, T>, this> {
-    const mapper = (IndexOneToMany._mapIndexOneToOne<T, Idx2>).bind(
+    preIndex?: false,
+  ): MappedStructure<Idx, T[], IndexOneToOne<Idx2, T>, this>;
+  mapIndexOneToOne<Idx2>(
+    getIndex: (obj: T) => Idx2,
+    preIndex: true,
+  ): MappedStructure<Idx, T[], PreIndexedStructure<Idx2, T>, this>;
+  mapIndexOneToOne<Idx2>(
+    getIndex: (obj: T) => Idx2,
+    preIndex?: boolean,
+  ): MappedStructure<
+    Idx,
+    T[],
+    PreIndexedStructure<Idx2, T> | IndexOneToOne<Idx2, T>,
+    this
+  > {
+    const mapper = IndexOneToMany._mapIndexOneToOne.bind(
       IndexOneToMany,
       getIndex,
+      preIndex ?? false,
     );
     return this.map(mapper);
   }
   mapIndexOneToMany<Idx2>(
     getIndex: (obj: T) => Idx2,
-  ): MappedStructure<Idx, T[], IndexOneToMany<Idx2, T>, this> {
-    const mapper = (IndexOneToMany._mapIndexOneToMany<T, Idx2>).bind(
+    preIndex?: false,
+  ): MappedStructure<Idx, T[], IndexOneToMany<Idx2, T>, this>;
+  mapIndexOneToMany<Idx2>(
+    getIndex: (obj: T) => Idx2,
+    preIndex: true,
+  ): MappedStructure<Idx, T[], PreIndexedStructure<Idx2, T[]>, this>;
+  mapIndexOneToMany<Idx2>(
+    getIndex: (obj: T) => Idx2,
+    preIndex?: boolean,
+  ): MappedStructure<
+    Idx,
+    T[],
+    PreIndexedStructure<Idx2, T[]> | IndexOneToMany<Idx2, T>,
+    this
+  > {
+    const mapper = IndexOneToMany._mapIndexOneToMany.bind(
       IndexOneToMany,
       getIndex,
+      preIndex ?? false,
     );
     return this.map(mapper);
   }
