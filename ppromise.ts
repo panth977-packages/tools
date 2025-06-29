@@ -54,7 +54,19 @@ export class PPromise<T> implements PromiseLike<T> {
   private errorCb?: ((error: unknown) => void)[] = [];
   private cancelCb?: (() => void)[] = [];
   private endCb?: (() => void)[] = [];
-  constructor(private readonly cancelable: boolean) {}
+  constructor(
+    private readonly cancelable: boolean,
+    process?: (port: PPromisePort<T>) => void,
+  ) {
+    if (process) {
+      const port = PPromise.createPort(this);
+      try {
+        process(port);
+      } catch (err) {
+        port.throw(err);
+      }
+    }
+  }
   static debug = false;
   private static onError(error: unknown) {
     if (this.debug) {
