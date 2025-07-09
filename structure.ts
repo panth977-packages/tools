@@ -10,6 +10,9 @@ export abstract class Structure<Idx, T> {
   abstract get(index: Idx): T;
   abstract has(index: Idx): boolean;
   abstract [Symbol.iterator](): Iterator<[Idx, T]>;
+  get iterator(): Iterator<[Idx, T]> {
+    return this[Symbol.iterator]();
+  }
   abstract add(index: Idx, value: T): void;
   getValues(): T[] {
     const values: T[] = [];
@@ -24,6 +27,9 @@ export abstract class Structure<Idx, T> {
       uniqueIndices.add(index);
     }
     return Array.from(uniqueIndices);
+  }
+  getEntries(): [Idx, T][] {
+    return [...this];
   }
   map<O>(mapper: (value: T, key: Idx) => O): MappedStructure<Idx, T, O, this> {
     return new MappedStructure(this, mapper);
@@ -44,8 +50,8 @@ export abstract class Structure<Idx, T> {
   }
   toPreIndexed(forIndexes?: Idx[]): PreIndexedStructure<Idx, T> {
     let size = 0;
-    const indexes = [];
-    const values = [];
+    const indexes: Idx[] = [];
+    const values: T[] = [];
     if (forIndexes !== undefined) {
       for (const index of forIndexes) {
         const value = this.get(index);
@@ -376,7 +382,7 @@ export class IndexOneToMany<Idx, T> extends Structure<Idx, Array<T>> {
     super();
   }
   oGet(index: Idx): Array<T> {
-    const arr = [];
+    const arr: T[] = [];
     for (let i = 0; i < this.list.length; i++) {
       const value = this.list[i];
       const key = this.getIndex(value);
