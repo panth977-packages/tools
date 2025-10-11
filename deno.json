@@ -1,6 +1,6 @@
 {
   "name": "@panth977/tools",
-  "version": "1.0.20",
+  "version": "2.0.0",
   "exports": "./mod.ts",
   "license": "MIT",
   "tasks": {
@@ -13,6 +13,6 @@
     }
   },
   "imports": {
-    "zod": "npm:zod@^3.25.67"
+    "zod": "npm:zod@^3.25.76"
   }
 }

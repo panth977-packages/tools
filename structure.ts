@@ -5,7 +5,7 @@ import {
   type PropType,
 } from "./exports.ts";
 
-import { z } from "zod/v4";
+import { z } from "zod";
 export abstract class Structure<Idx, T> {
   abstract get(index: Idx): T;
   abstract has(index: Idx): boolean;
@@ -71,24 +71,24 @@ export abstract class Structure<Idx, T> {
     return new PreIndexedStructure(size, indexes, values);
   }
   static fromRecord<T>(
-    record: Record<string, T>,
+    record: Record<string, T>
   ): PreIndexedStructure<string, T> {
     const keys = Object.keys(record);
     return new PreIndexedStructure(
       keys.length,
       keys,
-      keys.map((x) => record[x]),
+      keys.map((x) => record[x])
     );
   }
   static oneToOne<Idx, T>(
     list: Array<T>,
-    getIndex: (obj: T) => Idx,
+    getIndex: (obj: T) => Idx
   ): PreIndexedStructure<Idx, T> {
     return new IndexOneToOne(list, getIndex).toPreIndexed();
   }
   static oneToMany<Idx, T>(
     list: Array<T>,
-    getIndex: (obj: T) => Idx,
+    getIndex: (obj: T) => Idx
   ): PreIndexedStructure<Idx, T[]> {
     return new IndexOneToMany(list, getIndex).toPreIndexed();
   }
@@ -99,13 +99,14 @@ export abstract class Structure<Idx, T> {
 
 export type zPreIndexedStructure<
   Idx extends z.ZodType,
-  T extends z.ZodType,
-> = z.ZodPipe<
-  z.ZodCustom<PreIndexedStructure<z.infer<Idx>, z.infer<T>>>,
-  z.ZodTransform<
-    PreIndexedStructure<z.infer<Idx>, z.infer<T>>,
-    PreIndexedStructure<z.infer<Idx>, z.infer<T>>
-  >
+  T extends z.ZodType
+> = z.ZodEffects<
+  z.ZodType<
+    PreIndexedStructure<z.TypeOf<Idx>, z.TypeOf<T>>,
+    z.ZodTypeDef,
+    PreIndexedStructure<z.TypeOf<Idx>, z.TypeOf<T>>
+  >,
+  PreIndexedStructure<z.TypeOf<Idx>, z.TypeOf<T>>
 > & { index: Idx; value: T };
 export class PreIndexedStructure<Idx, T> extends Structure<Idx, T> {
   protected size: number;
@@ -113,7 +114,7 @@ export class PreIndexedStructure<Idx, T> extends Structure<Idx, T> {
   protected values: Array<T>;
   static zStructure<Idx extends z.ZodType, T extends z.ZodType>(
     zIndex: Idx,
-    zValue: T,
+    zValue: T
   ): zPreIndexedStructure<Idx, T> {
     const schema = z
       .instanceof(PreIndexedStructure<z.infer<Idx>, z.infer<T>>)
@@ -133,9 +134,9 @@ export class PreIndexedStructure<Idx, T> extends Structure<Idx, T> {
               newVal = z.NEVER;
               ctx.addIssue({
                 ...issue,
-                message: `[Structure Key @ ${JSON.stringify(
-                  index,
-                )}] ${issue.message}`,
+                message: `[Structure Key @ ${JSON.stringify(index)}] ${
+                  issue.message
+                }`,
               });
             }
           }
@@ -144,9 +145,9 @@ export class PreIndexedStructure<Idx, T> extends Structure<Idx, T> {
             for (const issue of valueResult.error.issues) {
               ctx.addIssue({
                 ...issue,
-                message: `[Structure Value @ ${JSON.stringify(
-                  index,
-                )}] ${issue.message}`,
+                message: `[Structure Value @ ${JSON.stringify(index)}] ${
+                  issue.message
+                }`,
               });
             }
           }
@@ -160,7 +161,7 @@ export class PreIndexedStructure<Idx, T> extends Structure<Idx, T> {
   constructor(
     size: number = 0,
     indexes: Array<Idx> = [],
-    values: Array<T> = [],
+    values: Array<T> = []
   ) {
     super();
     this.size = size;
@@ -221,7 +222,7 @@ export class MappedStructure<
   Idx,
   I,
   O,
-  S extends Structure<Idx, I>,
+  S extends Structure<Idx, I>
 > extends Structure<Idx, O> {
   protected structure: S;
   protected mapper: (value: I, key: Idx) => O;
@@ -289,10 +290,7 @@ export class HashStructure<Idx, T> extends Structure<Idx, T> {
  * ```
  */
 export class IndexOneToOne<Idx, T> extends Structure<Idx, T> {
-  constructor(
-    protected list: Array<T>,
-    protected getIndex: (obj: T) => Idx,
-  ) {
+  constructor(protected list: Array<T>, protected getIndex: (obj: T) => Idx) {
     super();
   }
   static Key<T, K extends keyof T>(key: K): (obj: T) => T[K] {
@@ -304,14 +302,14 @@ export class IndexOneToOne<Idx, T> extends Structure<Idx, T> {
   static InnerKey<
     T,
     S extends string,
-    K extends KeyPath<T, S, DefaultPrimitive>,
+    K extends KeyPath<T, S, DefaultPrimitive>
   >(split: S, keyPath: K): (obj: T) => PropType<T, S, K> {
     return (this._InnerKey<T, S, K>).bind(this, split, keyPath);
   }
   private static _InnerKey<
     T,
     S extends string,
-    K extends KeyPath<T, S, DefaultPrimitive>,
+    K extends KeyPath<T, S, DefaultPrimitive>
   >(split: S, keyPath: K, obj: T): PropType<T, S, K> {
     return getInnerProp(obj, keyPath, split);
   }
@@ -375,10 +373,7 @@ export class IndexOneToOne<Idx, T> extends Structure<Idx, T> {
  * ```
  */
 export class IndexOneToMany<Idx, T> extends Structure<Idx, Array<T>> {
-  constructor(
-    protected list: Array<T>,
-    protected getIndex: (obj: T) => Idx,
-  ) {
+  constructor(protected list: Array<T>, protected getIndex: (obj: T) => Idx) {
     super();
   }
   oGet(index: Idx): Array<T> {
@@ -441,7 +436,7 @@ export class IndexOneToMany<Idx, T> extends Structure<Idx, Array<T>> {
   private static _mapIndexOneToOne(
     getIndex: (obj: any) => any,
     preIndexed: boolean,
-    list: Array<any>,
+    list: Array<any>
   ) {
     if (preIndexed) return new IndexOneToOne(list, getIndex).toPreIndexed();
     return new IndexOneToOne(list, getIndex);
@@ -449,22 +444,22 @@ export class IndexOneToMany<Idx, T> extends Structure<Idx, Array<T>> {
   private static _mapIndexOneToMany(
     getIndex: (obj: any) => any,
     preIndexed: boolean,
-    list: Array<any>,
+    list: Array<any>
   ) {
     if (preIndexed) return new IndexOneToMany(list, getIndex).toPreIndexed();
     return new IndexOneToMany(list, getIndex);
   }
   mapIndexOneToOne<Idx2>(
     getIndex: (obj: T) => Idx2,
-    preIndex?: false,
+    preIndex?: false
   ): MappedStructure<Idx, T[], IndexOneToOne<Idx2, T>, this>;
   mapIndexOneToOne<Idx2>(
     getIndex: (obj: T) => Idx2,
-    preIndex: true,
+    preIndex: true
   ): MappedStructure<Idx, T[], PreIndexedStructure<Idx2, T>, this>;
   mapIndexOneToOne<Idx2>(
     getIndex: (obj: T) => Idx2,
-    preIndex?: boolean,
+    preIndex?: boolean
   ): MappedStructure<
     Idx,
     T[],
@@ -474,21 +469,21 @@ export class IndexOneToMany<Idx, T> extends Structure<Idx, Array<T>> {
     const mapper = IndexOneToMany._mapIndexOneToOne.bind(
       IndexOneToMany,
       getIndex,
-      preIndex ?? false,
+      preIndex ?? false
     );
     return this.map(mapper);
   }
   mapIndexOneToMany<Idx2>(
     getIndex: (obj: T) => Idx2,
-    preIndex?: false,
+    preIndex?: false
   ): MappedStructure<Idx, T[], IndexOneToMany<Idx2, T>, this>;
   mapIndexOneToMany<Idx2>(
     getIndex: (obj: T) => Idx2,
-    preIndex: true,
+    preIndex: true
   ): MappedStructure<Idx, T[], PreIndexedStructure<Idx2, T[]>, this>;
   mapIndexOneToMany<Idx2>(
     getIndex: (obj: T) => Idx2,
-    preIndex?: boolean,
+    preIndex?: boolean
   ): MappedStructure<
     Idx,
     T[],
@@ -498,7 +493,7 @@ export class IndexOneToMany<Idx, T> extends Structure<Idx, Array<T>> {
     const mapper = IndexOneToMany._mapIndexOneToMany.bind(
       IndexOneToMany,
       getIndex,
-      preIndex ?? false,
+      preIndex ?? false
     );
     return this.map(mapper);
   }

@@ -1,4 +1,4 @@
-import type { z } from "zod/v4";
+import type { z } from "zod";
 import { PPromise } from "./ppromise.ts";
 import { AccessKey } from "./basic.ts";
 
