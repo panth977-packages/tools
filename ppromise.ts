@@ -186,7 +186,7 @@ export class PPromise<T> implements PromiseLike<T> {
     this.errorCb.push(cb);
     return this;
   }
-  private oncancel(cb: () => void): this {
+  oncancel(cb: () => void): this {
     if (!this.cancelable) return this;
     if (this.cancelCb === undefined) {
       if (this.result[0] === 3) {
