@@ -186,7 +186,7 @@ export class PPromise<T> implements PromiseLike<T> {
     this.errorCb.push(cb);
     return this;
   }
-  oncancel(cb: () => void): this {
+  private oncancel(cb: () => void): this {
     if (!this.cancelable) return this;
     if (this.cancelCb === undefined) {
       if (this.result[0] === 3) {
@@ -239,30 +239,23 @@ export class PPromise<T> implements PromiseLike<T> {
     }
   }
   // --- pipe ---
-  private static _pipe(
-    ondata: (data: any) => any,
-    onerror: ((reason: any) => any) | null | undefined,
-    promise: PPromise<any>,
+  private static _map(
+    port: PPromisePort<any>,
+    fn: (data: any) => any,
     data: any,
-  ): void {
+  ) {
     try {
-      const result = ondata(data);
-      if (isPromiseLike(result)) {
-        result.then(
-          promise.resolve.bind(promise),
-          onerror
-            ? PPromise._pipe.bind(PPromise, onerror, null, promise)
-            : promise.reject.bind(promise),
-        );
+      const r = fn(data);
+      if (isPromiseLike(r)) {
+        const p = PPromise.from(r);
+        p.ondata(port.return);
+        p.onerror(port.throw);
+        port.oncancel(p.cancel);
       } else {
-        promise.resolve(result);
+        port.return(r);
       }
-    } catch (error) {
-      if (onerror) {
-        PPromise._pipe(onerror, null, promise, error);
-      } else {
-        promise.reject(error);
-      }
+    } catch (err) {
+      port.throw(err);
     }
   }
   map<TResult1 = T, TResult2 = never, TResult3 = never>(
@@ -274,40 +267,30 @@ export class PPromise<T> implements PromiseLike<T> {
       | ((reason: any) => TResult2 | PromiseLike<TResult2>)
       | null
       | undefined,
-    oncanceled?: (() => TResult3 | PromiseLike<TResult3>) | null | undefined,
+    oncanceled?:
+      | ((cancel: void) => TResult3 | PromiseLike<TResult3>)
+      | null
+      | undefined,
     bindCancel?: boolean,
   ): PPromise<TResult1 | TResult2 | TResult3> {
-    const promise = new PPromise<TResult1 | TResult2 | TResult3>(
-      this.cancelable,
-    );
+    const promise = new PPromise<any>(this.cancelable);
+    const port = PPromise.createPort(promise);
     if (onfulfilled) {
-      this.ondata(
-        PPromise._pipe.bind(PPromise, onfulfilled, onrejected, promise),
-      );
+      this.ondata(PPromise._map.bind(PPromise, port, onfulfilled));
     } else {
-      this.ondata((promise as PPromise<any>).resolve.bind(promise));
+      this.ondata(port.return);
     }
     if (onrejected) {
-      this.onerror(PPromise._pipe.bind(PPromise, onrejected, null, promise));
+      this.onerror(PPromise._map.bind(PPromise, port, onrejected));
     } else {
-      this.onerror(promise.reject.bind(promise));
+      this.onerror(port.throw);
     }
     if (oncanceled) {
-      this.oncancel(
-        PPromise._pipe.bind(
-          PPromise,
-          oncanceled,
-          onrejected,
-          promise,
-          undefined,
-        ),
-      );
+      this.oncancel(PPromise._map.bind(PPromise, port, oncanceled, undefined));
     } else {
       this.oncancel(promise.cancel.bind(promise));
     }
-    if (bindCancel) {
-      promise.oncancel(this.cancel.bind(this));
-    }
+    if (bindCancel) port.oncancel(this.cancel.bind(this));
     return promise;
   }
   then<TResult1 = T, TResult2 = never>(
