@@ -1,50 +1,42 @@
 import { DefaultSplitChar } from "./basic.ts";
-
-const SortMode = {
-  numberASC: (
-    a: [undefined | null | number, any],
-    b: [undefined | null | number, any],
-  ) => a[0] == null ? 1 : b[0] == null ? -1 : a[0] - b[0],
-  numberDESC: (
-    a: [undefined | null | number, any],
-    b: [undefined | null | number, any],
-  ) => a[0] == null ? 1 : b[0] == null ? -1 : b[0] - a[0],
-  stringASC: (
-    a: [undefined | null | string, any],
-    b: [undefined | null | string, any],
-  ) => a[0] == null ? 1 : b[0] == null ? -1 : a[0].localeCompare(b[0]),
-  stringDESC: (
-    a: [undefined | null | string, any],
-    b: [undefined | null | string, any],
-  ) => a[0] == null ? 1 : b[0] == null ? -1 : b[0].localeCompare(a[0]),
-  DateASC: (
-    a: [undefined | null | Date, any],
-    b: [undefined | null | Date, any],
-  ) => a[0] == null ? 1 : b[0] == null ? -1 : a[0].getTime() - b[0].getTime(),
-  DateDESC: (
-    a: [undefined | null | Date, any],
-    b: [undefined | null | Date, any],
-  ) => a[0] == null ? 1 : b[0] == null ? -1 : b[0].getTime() - a[0].getTime(),
-  booleanASC: (
-    a: [undefined | null | boolean, any],
-    b: [undefined | null | boolean, any],
-  ) => a[0] == null ? 1 : b[0] == null ? -1 : Number(a[0]) - Number(b[0]),
-  booleanDESC: (
-    a: [undefined | null | boolean, any],
-    b: [undefined | null | boolean, any],
-  ) => a[0] == null ? 1 : b[0] == null ? -1 : Number(b[0]) - Number(a[0]),
+type SortCompFn<T> = (
+  a: [undefined | null | T, any],
+  b: [undefined | null | T, any],
+) => number;
+const SortMode: {
+  numberASC: SortCompFn<number>;
+  numberDESC: SortCompFn<number>;
+  stringASC: SortCompFn<string>;
+  stringDESC: SortCompFn<string>;
+  DateASC: SortCompFn<Date>;
+  DateDESC: SortCompFn<Date>;
+  booleanASC: SortCompFn<boolean>;
+  booleanDESC: SortCompFn<boolean>;
+} = {
+  numberASC: (a, b) => a[0] == null ? 1 : b[0] == null ? -1 : a[0] - b[0],
+  numberDESC: (a, b) => a[0] == null ? 1 : b[0] == null ? -1 : b[0] - a[0],
+  stringASC: (a, b) =>
+    a[0] == null ? 1 : b[0] == null ? -1 : a[0].localeCompare(b[0]),
+  stringDESC: (a, b) =>
+    a[0] == null ? 1 : b[0] == null ? -1 : b[0].localeCompare(a[0]),
+  DateASC: (a, b) =>
+    a[0] == null ? 1 : b[0] == null ? -1 : a[0].getTime() - b[0].getTime(),
+  DateDESC: (a, b) =>
+    a[0] == null ? 1 : b[0] == null ? -1 : b[0].getTime() - a[0].getTime(),
+  booleanASC: (a, b) =>
+    a[0] == null ? 1 : b[0] == null ? -1 : Number(a[0]) - Number(b[0]),
+  booleanDESC: (a, b) =>
+    a[0] == null ? 1 : b[0] == null ? -1 : Number(b[0]) - Number(a[0]),
 };
-const SortAlgo = {
-  default: (
-    data: any[],
-    comp: (a: any, b: any) => number,
-    acc: (data: any) => any,
-  ) => data.map((x) => [acc(x), x]).sort((a, b) => comp(a, b)).map((x) => x[1]),
-  bucket: (
-    data: any[],
-    comp: (a: any, b: any) => number,
-    acc: (data: any) => any,
-  ) => {
+type SortAlgoFn = (
+  data: any[],
+  comp: (a: any, b: any) => number,
+  acc: (data: any) => any,
+) => any[];
+const SortAlgo: { default: SortAlgoFn; bucket: SortAlgoFn } = {
+  default: (data, comp, acc) =>
+    data.map((x) => [acc(x), x]).sort((a, b) => comp(a, b)).map((x) => x[1]),
+  bucket: (data, comp, acc) => {
     const bucket: Map<any, any[]> = new Map();
     for (const r of data) {
       const k = acc(r);
@@ -161,4 +153,3 @@ export function oneToManyMapping<T = any, R = T[]>(
   }
   return mapped;
 }
-
