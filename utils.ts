@@ -44,6 +44,30 @@ export async function delay(ms: number = 0) {
   await new Promise((r) => setTimeout(r, ms));
 }
 
+export function exists<T>(val: T): Exclude<T, undefined> {
+  if (val === undefined) throw Error('Expected to exists');
+  return val as never;
+}
+
+export function filterExistingItems<T>(val: T[]): Exclude<T, undefined | null | void>[];
+export function filterExistingItems<T>(val: Record<string, T>): Record<string, Exclude<T, undefined | null>>;
+export function filterExistingItems<T>(val: T[] | Record<string, T>): Exclude<T, undefined | null>[] | Record<string, Exclude<T, undefined | null>> {
+  if (Array.isArray(val)) {
+    const ret: Exclude<T, undefined | null>[] = [];
+    for (const a of val) {
+      if (a != undefined) ret.push(a as never);
+    }
+    return ret;
+  } else {
+    const ret: Record<string, Exclude<T, undefined | null>> = {};
+    for (const k in val) {
+      if (val[k] != undefined) ret[k] = val[k] as never;
+    }
+    return ret;
+  }
+}
+
+
 export function isPromiseLike(process: unknown): process is PromiseLike<any> {
   return typeof process === "object" &&
     process !== null &&
