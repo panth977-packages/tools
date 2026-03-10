@@ -247,7 +247,7 @@ export class PPromise<T> implements PromiseLike<T> {
     try {
       const r = fn(data);
       if (isPromiseLike(r)) {
-        const p = PPromise.from(r);
+        const p = PPromise.resolve(r);
         p.ondata(port.return);
         p.onerror(port.throw);
         port.oncancel(p.cancel);
@@ -355,6 +355,7 @@ export class PPromise<T> implements PromiseLike<T> {
     ...args: [PPromise<T>, T | PromiseLike<T>] | [T | PromiseLike<T>]
   ): PPromise<T> {
     if (args.length === 1) {
+      if (args[0] instanceof PPromise) return args[0];
       const promise = new PPromise<T>(false);
       promise.resolve(args[0]);
       return promise;
@@ -416,68 +417,160 @@ export class PPromise<T> implements PromiseLike<T> {
     delete _s.cnt;
     delete _s.finalCnt;
   }
+  private static allUtils = {
+    onData(
+      state: { cnt: number | null; result: any },
+      port: PPromisePort<any>,
+      key: number | string,
+      data: any,
+    ) {
+      if (state.cnt == null) return;
+      state.result[key] = data;
+      state.cnt--;
+      if (state.cnt === 0) {
+        state.cnt = null;
+        port.return(state.result);
+      }
+    },
+    onError(
+      state: { cnt: number | null; result: any },
+      port: PPromisePort<any>,
+      err: unknown,
+    ) {
+      if (state.cnt == null) return;
+      state.result = null;
+      state.cnt = null;
+      port.throw(err);
+    },
+    onCancel(
+      state: { cnt: number | null; result: any },
+      port: PPromisePort<any>,
+    ) {
+      if (state.cnt == null) return;
+      state.result = null;
+      state.cnt = null;
+      port.throw(new Error("Some of this promise was canceled!"));
+    },
+    bindData(
+      p: PPromise<any>,
+      state: { cnt: number | null; result: any },
+      port: PPromisePort<any>,
+      key: number | string,
+      bindCancel: boolean,
+    ) {
+      p.ondata(PPromise.allUtils.onData.bind(null, state, port, key));
+      p.onerror(PPromise.allUtils.onError.bind(null, state, port));
+      p.oncancel(PPromise.allUtils.onCancel.bind(null, state, port));
+      if (bindCancel) port.oncancel(p.cancel.bind(p));
+    },
+    bindEnd(
+      p: PPromise<any>,
+      state: { cnt: number | null; result: any },
+      port: PPromisePort<any>,
+      key: number | string,
+      bindCancel: boolean,
+    ) {
+      const onData = PPromise.allUtils.onData.bind(
+        null,
+        state,
+        port,
+        key,
+        null,
+      );
+      p.ondata(onData);
+      p.onerror(onData);
+      p.oncancel(onData);
+      if (bindCancel) port.oncancel(p.cancel.bind(p));
+    },
+  };
   /**
    * ```ts
    * const [a, b, c] = await AsyncCbReceiver.all([
    *   Promise.resolve(0),
-   *   PPromise.from(Promise.resolve("1")),
+   *   PPromise.resolve(Promise.resolve("1")),
    *   PPromise.resolve({ t: 3 }).then((x) => x.t).catchError(() => 0).then((x) => AsyncCbReceiver.resolve(`${x}`)),
    * ]);
    * ```
    */
   static all<T extends readonly any[] | []>(
     data: T,
-    bindCancel = true,
-  ): PPromise<{ -readonly [P in keyof T]: Awaited<T[P]> }> {
-    const state = PPromise._allState(data.length);
-    const promise = state.promise;
-    for (let i = 0; i < data.length; i++) {
-      let process = data[i];
-      if (process instanceof PPromise) {
-        if (bindCancel) promise.oncancel(process.cancel.bind(process));
-        process = process.catchCancel(PPromise.ThrowCancel);
+    bindCancel?: boolean,
+  ): PPromise<{ -readonly [P in keyof T]: Awaited<T[P]> }>;
+  static all<T extends Record<string, any>>(
+    data: T,
+    bindCancel?: boolean,
+  ): PPromise<{ readonly [P in keyof T]: Awaited<T[P]> }>;
+  static all(data: any, bindCancel = true): PPromise<any> {
+    if (Array.isArray(data)) {
+      const state: { cnt: number | null; result: any } = {
+        cnt: data.length,
+        result: Array(data.length),
+      };
+      if (state.cnt === 0) return PPromise.resolve(state.result);
+      const promise = new PPromise<any>(bindCancel);
+      const port = PPromise.createPort(promise);
+      for (let i = 0; i < data.length; i++) {
+        const p = PPromise.resolve(data[i]);
+        PPromise.allUtils.bindData(p, state, port, i, bindCancel);
       }
-      if (isPromiseLike(process)) {
-        process.then(
-          PPromise._allResolveCb.bind(PPromise, state, i),
-          PPromise._allRejectCb.bind(PPromise, state, i),
-        );
-      } else {
-        PPromise._allResolveCb(state, i, process);
-      }
+      return promise;
     }
-    return promise;
+    if (typeof data === "object" && data) {
+      const state: { cnt: number | null; result: any } = {
+        cnt: Object.keys(data).length,
+        result: {},
+      };
+      if (state.cnt === 0) return PPromise.resolve(state.result);
+      const promise = new PPromise<any>(bindCancel);
+      const port = PPromise.createPort(promise);
+      for (const key in data) {
+        const p = PPromise.resolve(data[key]);
+        PPromise.allUtils.bindData(p, state, port, key, bindCancel);
+      }
+      return promise;
+    }
+    throw new Error("Unknown Data");
   }
-  static allCompleted(data: any[], bindCancel = true): PPromise<void> {
-    const state = PPromise._allState(data.length);
-    const promise = state.promise;
-    for (let i = 0; i < data.length; i++) {
-      let process = data[i];
-      if (process instanceof PPromise) {
-        if (bindCancel) promise.oncancel(process.cancel.bind(process));
-        process = process.catchCancel(PPromise.ThrowCancel);
+  static allCompleted(
+    data: any[] | Record<string, any>,
+    bindCancel = true,
+  ): PPromise<void> {
+    if (Array.isArray(data)) {
+      const state: { cnt: number | null; result: any } = {
+        cnt: data.length,
+        result: Array(data.length),
+      };
+      if (state.cnt === 0) return PPromise.resolve(state.result);
+      const promise = new PPromise<any>(bindCancel);
+      const port = PPromise.createPort(promise);
+      for (let i = 0; i < data.length; i++) {
+        const p = PPromise.resolve(data[i]);
+        PPromise.allUtils.bindEnd(p, state, port, i, bindCancel);
       }
-      if (isPromiseLike(process)) {
-        process.then(
-          PPromise._allResolveCb.bind(PPromise, state, i),
-          PPromise._allResolveCb.bind(PPromise, state, i),
-        );
-      } else {
-        PPromise._allResolveCb(state, i, process);
-      }
+      return promise.$then(VoidFn);
     }
-    const out = promise.then(VoidFn);
-    return out;
+    if (typeof data === "object" && data) {
+      const state: { cnt: number | null; result: any } = {
+        cnt: Object.keys(data).length,
+        result: {},
+      };
+      if (state.cnt === 0) return PPromise.resolve(state.result);
+      const promise = new PPromise<any>(bindCancel);
+      const port = PPromise.createPort(promise);
+      for (const key in data) {
+        const p = PPromise.resolve(data[key]);
+        PPromise.allUtils.bindEnd(p, state, port, key, bindCancel);
+      }
+      return promise.$then(VoidFn);
+    }
+    throw new Error("Unknown Data");
   }
   // --- conversion ---
   static from<T>(promiseLike: PromiseLike<T>): PPromise<T> {
-    if (promiseLike instanceof PPromise) return promiseLike;
-    const promise = new PPromise<T>(false);
-    promiseLike.then(
-      promise.resolve.bind(promise),
-      promise.reject.bind(promise),
-    );
-    return promise;
+    if (!isPromiseLike(promiseLike)) {
+      throw new Error("Only Promise Like are allowed");
+    }
+    return PPromise.resolve(promiseLike);
   }
   promisified(): Promise<T> {
     return new Promise((resolve, reject) => {
