@@ -25,242 +25,248 @@
  * }
  * const stream = newAsyncCb(124);
  * const transformed = stream.map((d) => d['prop'], () => 0);
- * setTimeout(transformed.cancel.bind(transformed), 1000);
+ * setTimeout(() => transformed.cancel(), 1000);
  * transformed.listen(console.log, console.error);
  * ```
  */
 export function $stream<T>(): readonly [PStreamPort<T>, PStream<T>] {
-  const promise = new PStream<T>();
-  const port: PStreamPort<T> = PStream.createPort(promise);
-  return [port, promise] as const;
+  const stream = new PStream<T>();
+  const port: PStreamPort<T> = new PStreamPort(stream);
+  return [port, stream] as const;
 }
 
-export interface PStreamPort<T> {
-  emit(data: T): void;
-  return(): void;
-  throw(error: unknown): void;
-  oncancel(cb: () => void): void;
+export class PStreamPort<T> {
+  constructor(private stream: any) {}
+  emit(data: T): void {
+    this.stream.emit(data);
+  }
+  return(): void {
+    this.stream.resolve();
+  }
+  throw(error: unknown): void {
+    this.stream.reject(error);
+  }
+  oncancel(cb: () => void): void {
+    this.stream.oncancel(cb);
+  }
+  get canceled(): boolean {
+    return this.stream._state === 3;
+  }
 }
 
 export class PStream<T> {
-  // 0 => pending
-  // 1 => yielded
-  // 2 => error
-  // 3 => canceled
-  // 4 => completed
-  private unflusedData?: T[] = [];
-  private result: [0] | [1] | [2, unknown] | [3] | [4] = [0];
-  private nextCb?: ((data: T) => void)[] = [];
-  private errorCb?: ((error: unknown) => void)[] = [];
-  private completedCb?: (() => void)[] = [];
-  private cancelCb?: (() => void)[] = [];
-  private endCb?: (() => void)[] = [];
-  static debug = false;
-  private static onError(error: unknown) {
-    if (this.debug) {
-      console.error(error);
-    }
-  }
-  private shrinkMemory(): void {
-    if (this.unflusedData === undefined) {
-      delete this.nextCb;
-    }
-    delete this.errorCb;
-    delete this.endCb;
-    delete this.cancelCb;
-    Object.freeze(this);
-    Object.freeze(this.result);
-  }
+  // _state values:
+  // 0 => pending (no data emitted yet)
+  // 1 => emitting (data has been emitted, stream still open)
+  // 2 => error (terminal)
+  // 3 => canceled (terminal)
+  // 4 => completed/resolved (terminal)
+  private _state: 0 | 1 | 2 | 3 | 4 = 0;
+  private _error: unknown; // only set when _state === 2
+
+  // Buffer for data emitted before .listen() is called.
+  // Initialized to []. Set to undefined once flushing starts (listen() called).
+  private _buf: T[] | undefined = [];
+
+  // Active data listeners for the current emission slot.
+  // Replaced each time data flows (rotating listener pattern).
+  // Set to undefined once the stream reaches a terminal state.
+  private _next?: ((data: T) => void)[];
+
+  // Flat callbacks array: [tag, fn, tag, fn, ...]
+  // Tags: 2=error, 3=cancel, 4=completed, 5=end
+  // (tag 1 is reserved for data — handled separately via _next)
+  private _callbacks?: any[];
+
   // --- controller ---
-  static createPort<T>(promise: PStream<T>): PStreamPort<T> {
-    return {
-      emit: promise.emit.bind(promise),
-      return: promise.resolve.bind(promise),
-      throw: promise.reject.bind(promise),
-      oncancel: promise.oncancel.bind(promise),
-    };
-  }
   private emit(data: T): void {
-    if (this.nextCb === undefined) return;
-    if (this.result[0] === 0) this.result = [1];
-    if (this.unflusedData !== undefined) {
-      this.unflusedData.push(data);
+    if (this._state > 1) return; // terminal state — drop
+    if (this._state === 0) this._state = 1;
+    if (this._buf !== undefined) {
+      // Not yet flushing — buffer the data
+      this._buf.push(data);
     } else {
-      if (this.nextCb !== undefined) {
-        const nextCb = this.nextCb;
-        this.nextCb = [];
-        for (const cb of nextCb) {
+      // Flushing in progress — dispatch to current listeners
+      const next = this._next;
+      if (next) {
+        this._next = [];
+        for (let i = 0; i < next.length; i++) {
           try {
-            cb(data);
+            next[i](data);
           } catch (err) {
-            PStream.onError(err);
+            console.error(err);
           }
         }
       }
     }
   }
+
   private resolve(): void {
-    if (this.completedCb === undefined) return;
-    this.result = [4];
-    for (const cb of this.completedCb) {
-      try {
-        cb();
-      } catch (error) {
-        PStream.onError(error);
-      }
-    }
-    if (this.endCb !== undefined) {
-      for (const cb of this.endCb) {
-        try {
-          cb();
-        } catch (error) {
-          PStream.onError(error);
+    if (this._state > 1) return;
+    this._state = 4;
+    const cbs = this._callbacks;
+    if (cbs) {
+      for (let i = 0; i < cbs.length; i += 2) {
+        const tag = cbs[i];
+        if (tag === 4 || tag === 5) {
+          try {
+            cbs[i + 1]();
+          } catch (error) {
+            console.error(error);
+          }
         }
       }
     }
-    this.shrinkMemory();
+    this._callbacks = undefined;
+    this._next = undefined;
   }
+
   private reject(error: unknown): void {
-    if (this.errorCb === undefined) return;
-    this.result = [2, error];
-    for (const cb of this.errorCb) {
-      try {
-        cb(error);
-      } catch (error) {
-        PStream.onError(error);
-      }
-    }
-    if (this.endCb !== undefined) {
-      for (const cb of this.endCb) {
-        try {
-          cb();
-        } catch (error) {
-          PStream.onError(error);
+    if (this._state > 1) return;
+    this._state = 2;
+    this._error = error;
+    const cbs = this._callbacks;
+    if (cbs) {
+      for (let i = 0; i < cbs.length; i += 2) {
+        const tag = cbs[i];
+        if (tag === 2 || tag === 5) {
+          try {
+            tag === 2 ? cbs[i + 1](error) : cbs[i + 1]();
+          } catch (error) {
+            console.error(error);
+          }
         }
       }
     }
-    this.shrinkMemory();
+    this._callbacks = undefined;
+    this._next = undefined;
   }
+
   cancel(): void {
-    if (this.cancelCb === undefined) return;
-    this.result = [3];
-    for (const cb of this.cancelCb) {
-      try {
-        cb();
-      } catch (error) {
-        PStream.onError(error);
-      }
-    }
-    if (this.endCb !== undefined) {
-      for (const cb of this.endCb) {
-        try {
-          cb();
-        } catch (error) {
-          PStream.onError(error);
+    if (this._state > 1) return;
+    this._state = 3;
+    const cbs = this._callbacks;
+    if (cbs) {
+      for (let i = 0; i < cbs.length; i += 2) {
+        const tag = cbs[i];
+        if (tag === 3 || tag === 5) {
+          try {
+            cbs[i + 1]();
+          } catch (error) {
+            console.error(error);
+          }
         }
       }
     }
-    this.shrinkMemory();
+    this._callbacks = undefined;
+    this._next = undefined;
   }
+
   // --- events ---
   onnext(cb: (data: T) => void): this {
-    if (this.nextCb !== undefined) {
-      this.nextCb.push(cb);
+    if (this._next !== undefined) {
+      this._next.push(cb);
     }
     return this;
   }
+
   onerror(cb: (error: unknown) => void): this {
-    if (this.errorCb === undefined) {
-      if (this.result[0] === 2) {
-        try {
-          cb(this.result[1]);
-        } catch (error) {
-          PStream.onError(error);
-        }
+    if (this._state === 2) {
+      try {
+        cb(this._error);
+      } catch (error) {
+        console.error(error);
       }
-      return this;
+    } else if (this._state <= 1) {
+      if (this._callbacks) this._callbacks.push(2, cb);
+      else this._callbacks = [2, cb];
     }
-    this.errorCb.push(cb);
     return this;
   }
+
   oncancel(cb: () => void): this {
-    if (this.cancelCb === undefined) {
-      if (this.result[0] === 3) {
-        try {
-          cb();
-        } catch (error) {
-          PStream.onError(error);
-        }
+    if (this._state === 3) {
+      try {
+        cb();
+      } catch (error) {
+        console.error(error);
       }
-      return this;
+    } else if (this._state <= 1) {
+      if (this._callbacks) this._callbacks.push(3, cb);
+      else this._callbacks = [3, cb];
     }
-    this.cancelCb.push(cb);
     return this;
   }
+
   onfinish(cb: () => void): this {
-    if (this.completedCb === undefined) {
-      if (this.result[0] === 4) {
-        try {
-          cb();
-        } catch (error) {
-          PStream.onError(error);
-        }
+    if (this._state === 4) {
+      try {
+        cb();
+      } catch (error) {
+        console.error(error);
       }
-      return this;
+    } else if (this._state <= 1) {
+      if (this._callbacks) this._callbacks.push(4, cb);
+      else this._callbacks = [4, cb];
     }
-    this.completedCb.push(cb);
     return this;
   }
+
   onend(cb: () => void): this {
-    if (this.endCb === undefined) {
-      if (this.result[0] !== 0 && this.result[0] !== 1) {
-        try {
-          cb();
-        } catch (error) {
-          PStream.onError(error);
-        }
+    if (this._state > 1) {
+      // Already in terminal state — fire immediately
+      try {
+        cb();
+      } catch (error) {
+        console.error(error);
       }
-      return this;
+    } else {
+      if (this._callbacks) this._callbacks.push(5, cb);
+      else this._callbacks = [5, cb];
     }
-    this.endCb.push(cb);
     return this;
   }
-  private flushData(): this {
-    if (this.unflusedData === undefined) return this;
-    if (this.nextCb === undefined) return this;
-    for (const data of this.unflusedData) {
-      const nextCb = this.nextCb;
-      this.nextCb = [];
-      for (const cb of nextCb) {
+
+  private flushBuffer(): this {
+    const buf = this._buf;
+    if (buf === undefined) return this;
+    this._buf = undefined;
+    for (let i = 0; i < buf.length; i++) {
+      const next = this._next;
+      if (!next) break; // became terminal mid-flush
+      this._next = [];
+      for (let j = 0; j < next.length; j++) {
         try {
-          cb(data);
+          next[j](buf[i]);
         } catch (err) {
-          PStream.onError(err);
+          console.error(err);
         }
       }
     }
-    delete this.unflusedData;
-    if (this.result[0] !== 0 && this.result[0] !== 1) {
-      this.shrinkMemory();
+    // If stream ended while buffering, finalize now
+    if (this._state > 1) {
+      this._next = undefined;
     }
     return this;
   }
+
   // --- values ---
   get __error__(): unknown {
-    if (this.result[0] === 2) return this.result[1];
-    throw new Error("PPromise did not reject.");
+    if (this._state === 2) return this._error;
+    throw new Error("PStream did not reject.");
   }
+
   get __status__():
     | "Pending"
-    | "Emmiting"
+    | "Emitting"
     | "Resolved"
     | "Rejected"
     | "Canceled" {
-    switch (this.result[0]) {
+    switch (this._state) {
       case 0:
         return "Pending";
       case 1:
-        return "Emmiting";
+        return "Emitting";
       case 2:
         return "Rejected";
       case 3:
@@ -268,56 +274,60 @@ export class PStream<T> {
       case 4:
         return "Resolved";
       default:
-        throw new Error("Unknown case occured!");
+        throw new Error("Unknown state!");
     }
   }
+
   // --- pipe ---
-  private _listen(cb: (data: T, i: number) => void, i: number, data: T) {
-    this.onnext(this._listen.bind(this, cb, i + 1));
+  // listen registers a handler that re-registers itself on every emission
+  // (so each new value is dispatched to the registered handler chain).
+  private _listenStep(cb: (data: T, i: number) => void, i: number, data: T) {
+    this.onnext((d) => this._listenStep(cb, i + 1, d));
     cb(data, i);
   }
+
   listen(cb: (data: T, i: number) => void): this {
-    if (this.unflusedData === undefined) {
+    if (this._buf === undefined) {
       throw new Error("This stream has already started flushing...");
     }
-    this.onnext(this._listen.bind(this, cb, 0));
-    this.flushData();
+    // Initialise the rotating nextCb slot
+    this._next = [];
+    this.onnext((d) => this._listenStep(cb, 0, d));
+    this.flushBuffer();
     return this;
   }
-  private static _map<T, TResult1>(
+
+  private static _mapStep<T, TResult1>(
     stream: PStream<TResult1>,
-    cb: (data: T, i: number) => TResult1,
-    onerror: undefined | ((reason: any) => void),
+    mapFn: (data: T, i: number) => TResult1,
+    onErr: undefined | ((reason: any) => void),
     data: T,
     i: number,
   ) {
     try {
-      stream.emit(cb(data, i));
+      stream.emit(mapFn(data, i));
     } catch (err) {
-      onerror?.(err);
+      onErr?.(err);
     }
   }
+
   map<TResult1>(
-    map: (data: T, i: number) => TResult1,
-    onerror?: (reason: any) => void,
+    mapFn: (data: T, i: number) => TResult1,
+    onErr?: (reason: any) => void,
     bindCancel = true,
   ): PStream<TResult1> {
-    if (this.unflusedData === undefined) {
+    if (this._buf === undefined) {
       throw new Error("This stream has already started flushing...");
     }
-    const stream = new PStream<TResult1>();
-    this.oncancel(stream.cancel.bind(stream));
-    this.onfinish(stream.resolve.bind(stream));
-    this.onerror(stream.reject.bind(stream));
-    if (bindCancel) {
-      stream.oncancel(this.cancel.bind(this));
-    }
-    this.listen(
-      (PStream._map<T, TResult1>)
-        .bind(PStream, stream, map, onerror),
-    );
-    return stream;
+    const child = new PStream<TResult1>();
+    this.oncancel(() => child.cancel());
+    this.onfinish(() => child.resolve());
+    this.onerror((err) => child.reject(err));
+    if (bindCancel) child.oncancel(() => this.cancel());
+    this.listen((data, i) => PStream._mapStep(child, mapFn, onErr, data, i));
+    return child;
   }
+
   // --- statics ---
   static emit<T>(stream: PStream<T>, value: T): PStream<T>;
   static emit<T>(value: T): PStream<T>;
@@ -332,6 +342,7 @@ export class PStream<T> {
       return args[0];
     }
   }
+
   static resolve<T>(stream: PStream<T>): PStream<T>;
   static resolve<T>(): PStream<T>;
   static resolve<T>(...args: [PStream<T>] | []): PStream<T> {
@@ -344,6 +355,7 @@ export class PStream<T> {
       return args[0];
     }
   }
+
   static reject<T>(stream: PStream<T>, error: unknown): PStream<T>;
   static reject<T>(error: unknown): PStream<T>;
   static reject<T>(...args: [PStream<T>, unknown] | [unknown]): PStream<T> {

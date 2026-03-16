@@ -47,8 +47,8 @@ export class PPromisePort<T> {
   oncancel(cb: () => void): void {
     this.promise.oncancel(cb);
   }
-  get canceled() {
-    return this.promise._status === 3;
+  get canceled(): boolean {
+    return this.promise._state === 3;
   }
 }
 
