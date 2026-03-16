@@ -40,7 +40,7 @@ const SReturn = Symbol('return');
 const SThrow = Symbol('throw');
 const SState = Symbol('state');
 
-class PPromisePort<T> {
+export class PPromisePort<T> {
   constructor(private promise: PPromise<T>) {}
   get return(): (data: T | PromiseLike<T>) => void {
     return this.promise[SReturn].bind(this.promise);
