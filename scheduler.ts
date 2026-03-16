@@ -126,7 +126,7 @@ export class CreateBatch<A, R> {
     }
   }
   runJob(arg: A): PPromise<R> {
-    const promise = new PPromise<R>(true);
+    const promise = new PPromise<R>();
     const ele = [arg, promise] as const;
     promise.oncancel(this.removeJob.bind(this, ele));
     this.queue.push(ele);
