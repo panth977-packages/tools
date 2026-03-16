@@ -36,22 +36,6 @@ export function $async<T>(): readonly [PPromisePort<T>, PPromise<T>] {
   return [port, promise] as const;
 }
 
-export class PPromisePort<T> {
-  constructor(private promise: any) {}
-  return(data: T | PromiseLike<T>): void {
-    this.promise.resolve(data);
-  }
-  throw(error: unknown): void {
-    this.promise.reject(error);
-  }
-  oncancel(cb: () => void): void {
-    this.promise.oncancel(cb);
-  }
-  get canceled(): boolean {
-    return this.promise._state === 3;
-  }
-}
-
 export class PPromise<T> implements PromiseLike<T> {
   // 0 => pending
   // 1 => done
@@ -71,6 +55,23 @@ export class PPromise<T> implements PromiseLike<T> {
         port.throw(err);
       }
     }
+  }
+  static port() {
+    return class PPromisePort<T> {
+      constructor(private promise: any) {}
+      return(data: T | PromiseLike<T>): void {
+        this.promise.resolve(data);
+      }
+      throw(error: unknown): void {
+        this.promise.reject(error);
+      }
+      oncancel(cb: () => void): void {
+        this.promise.oncancel(cb);
+      }
+      get canceled(): boolean {
+        return this.promise._state === 3;
+      }
+    };
   }
   // --- controller ---
   private resolve(data: T | PromiseLike<T>): void {
@@ -502,6 +503,9 @@ export class PPromise<T> implements PromiseLike<T> {
   }
   static VoidCancel(): void {}
 }
+
+export const PPromisePort = PPromise.port();
+export type PPromisePort<T> = InstanceType<typeof PPromisePort<T>>;
 
 class CancelError extends Error {
   constructor() {

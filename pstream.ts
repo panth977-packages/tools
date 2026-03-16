@@ -35,25 +35,6 @@ export function $stream<T>(): readonly [PStreamPort<T>, PStream<T>] {
   return [port, stream] as const;
 }
 
-export class PStreamPort<T> {
-  constructor(private stream: any) {}
-  emit(data: T): void {
-    this.stream.emit(data);
-  }
-  return(): void {
-    this.stream.resolve();
-  }
-  throw(error: unknown): void {
-    this.stream.reject(error);
-  }
-  oncancel(cb: () => void): void {
-    this.stream.oncancel(cb);
-  }
-  get canceled(): boolean {
-    return this.stream._state === 3;
-  }
-}
-
 export class PStream<T> {
   // _state values:
   // 0 => pending (no data emitted yet)
@@ -77,6 +58,27 @@ export class PStream<T> {
   // Tags: 2=error, 3=cancel, 4=completed, 5=end
   // (tag 1 is reserved for data — handled separately via _next)
   private _callbacks?: any[];
+
+  static port() {
+    return class PStreamPort<T> {
+      constructor(private stream: PStream<T>) {}
+      emit(data: T): void {
+        this.stream.emit(data);
+      }
+      return(): void {
+        this.stream.resolve();
+      }
+      throw(error: unknown): void {
+        this.stream.reject(error);
+      }
+      oncancel(cb: () => void): void {
+        this.stream.oncancel(cb);
+      }
+      get canceled(): boolean {
+        return this.stream._state === 3;
+      }
+    };
+  }
 
   // --- controller ---
   private emit(data: T): void {
@@ -282,7 +284,7 @@ export class PStream<T> {
   // listen registers a handler that re-registers itself on every emission
   // (so each new value is dispatched to the registered handler chain).
   private _listenStep(cb: (data: T, i: number) => void, i: number, data: T) {
-    this.onnext((d) => this._listenStep(cb, i + 1, d));
+    this.onnext(this._listenStep.bind(this, cb, i + 1));
     cb(data, i);
   }
 
@@ -292,7 +294,7 @@ export class PStream<T> {
     }
     // Initialise the rotating nextCb slot
     this._next = [];
-    this.onnext((d) => this._listenStep(cb, 0, d));
+    this.onnext(this._listenStep.bind(this, cb, 0));
     this.flushBuffer();
     return this;
   }
@@ -320,11 +322,11 @@ export class PStream<T> {
       throw new Error("This stream has already started flushing...");
     }
     const child = new PStream<TResult1>();
-    this.oncancel(() => child.cancel());
-    this.onfinish(() => child.resolve());
-    this.onerror((err) => child.reject(err));
-    if (bindCancel) child.oncancel(() => this.cancel());
-    this.listen((data, i) => PStream._mapStep(child, mapFn, onErr, data, i));
+    this.oncancel(child.cancel.bind(child));
+    this.onfinish(child.resolve.bind(child));
+    this.onerror(child.reject.bind(child));
+    if (bindCancel) child.oncancel(this.cancel.bind(this));
+    this.listen((PStream._mapStep<T, TResult1>).bind(PStream, child, mapFn, onErr));
     return child;
   }
 
@@ -369,3 +371,5 @@ export class PStream<T> {
     }
   }
 }
+export const PStreamPort = PStream.port();
+export type PStreamPort<T> = InstanceType<typeof PStreamPort<T>>;
