@@ -18,8 +18,8 @@ import { isPromiseLike, VoidFn } from "./utils.ts";
  * function newAsyncCb(id: number): PPromise<Record<string, number>> {
  *   const [port, promise] = $async<Record<string, number>>();
  *   const process = someApi(id);
- *   process.ondata = port.return;
- *   process.onerror = port.throw;
+ *   process.ondata = port[SReturn];
+ *   process.onerror = port[SThrow];
  *   port.oncancel(process.stop);
  *   process.start();
  *   return promise;
@@ -36,12 +36,32 @@ export function $async<T>(): readonly [PPromisePort<T>, PPromise<T>] {
   return [port, promise] as const;
 }
 
+const SReturn = Symbol('return');
+const SThrow = Symbol('throw');
+const SState = Symbol('state');
+
+class PPromisePort<T> {
+  constructor(private promise: PPromise<T>) {}
+  get return(): (data: T | PromiseLike<T>) => void {
+    return this.promise[SReturn].bind(this.promise);
+  }
+  get throw(): (error: unknown) => void {
+    return this.promise[SThrow].bind(this.promise);
+  }
+  get oncancel(): (cb: () => void) => void {
+    return this.promise.oncancel.bind(this.promise);
+  }
+  get canceled(): boolean {
+    return this.promise[SState] === 3;
+  }
+}
+
 export class PPromise<T> implements PromiseLike<T> {
   // 0 => pending
   // 1 => done
   // 2 => error
   // 3 => canceled
-  private _state: 0 | 1 | 2 | 3 = 0;
+  private [SState]: 0 | 1 | 2 | 3 = 0;
   private _value: any; // reuse for data and error
   // [tag, cb, tag, cb, ...]
   // 1: data, 2: error, 3: cancel, 4: end
@@ -56,31 +76,14 @@ export class PPromise<T> implements PromiseLike<T> {
       }
     }
   }
-  static port() {
-    return class PPromisePort<T> {
-      constructor(private promise: any) {}
-      return(data: T | PromiseLike<T>): void {
-        this.promise.resolve(data);
-      }
-      throw(error: unknown): void {
-        this.promise.reject(error);
-      }
-      oncancel(cb: () => void): void {
-        this.promise.oncancel(cb);
-      }
-      get canceled(): boolean {
-        return this.promise._state === 3;
-      }
-    };
-  }
   // --- controller ---
-  private resolve(data: T | PromiseLike<T>): void {
-    if (this._state !== 0) return;
+  private [SReturn](data: T | PromiseLike<T>): void {
+    if (this[SState] !== 0) return;
     if (isPromiseLike(data)) {
-      data.then(this.resolve.bind(this), this.reject.bind(this));
+      data.then(this[SReturn].bind(this), this[SThrow].bind(this));
       return;
     }
-    this._state = 1;
+    this[SState] = 1;
     this._value = data;
     const cbs = this.callbacks;
     if (cbs) {
@@ -103,9 +106,9 @@ export class PPromise<T> implements PromiseLike<T> {
     }
     this.callbacks = undefined;
   }
-  private reject(error: unknown): void {
-    if (this._state !== 0) return;
-    this._state = 2;
+  private [SThrow](error: unknown): void {
+    if (this[SState] !== 0) return;
+    this[SState] = 2;
     this._value = error;
     const cbs = this.callbacks;
     if (cbs) {
@@ -129,8 +132,8 @@ export class PPromise<T> implements PromiseLike<T> {
     this.callbacks = undefined;
   }
   cancel(): void {
-    if (this._state !== 0) return;
-    this._state = 3;
+    if (this[SState] !== 0) return;
+    this[SState] = 3;
     const cbs = this.callbacks;
     if (cbs) {
       for (let i = 0; i < cbs.length; i += 2) {
@@ -148,46 +151,46 @@ export class PPromise<T> implements PromiseLike<T> {
   }
   // --- events ---
   ondata(cb: (data: T) => void): this {
-    if (this._state === 1) {
+    if (this[SState] === 1) {
       try {
         cb(this._value);
       } catch (error) {
         console.error(error);
       }
-    } else if (this._state === 0) {
+    } else if (this[SState] === 0) {
       if (this.callbacks) this.callbacks.push(1, cb);
       else this.callbacks = [1, cb];
     }
     return this;
   }
   onerror(cb: (error: unknown) => void): this {
-    if (this._state === 2) {
+    if (this[SState] === 2) {
       try {
         cb(this._value);
       } catch (error) {
         console.error(error);
       }
-    } else if (this._state === 0) {
+    } else if (this[SState] === 0) {
       if (this.callbacks) this.callbacks.push(2, cb);
       else this.callbacks = [2, cb];
     }
     return this;
   }
   oncancel(cb: () => void): this {
-    if (this._state === 3) {
+    if (this[SState] === 3) {
       try {
         cb();
       } catch (error) {
         console.error(error);
       }
-    } else if (this._state === 0) {
+    } else if (this[SState] === 0) {
       if (this.callbacks) this.callbacks.push(3, cb);
       else this.callbacks = [3, cb];
     }
     return this;
   }
   onend(cb: () => void): this {
-    if (this._state !== 0) {
+    if (this[SState] !== 0) {
       try {
         cb();
       } catch (error) {
@@ -201,15 +204,15 @@ export class PPromise<T> implements PromiseLike<T> {
   }
   // --- values ---
   get __value__(): T {
-    if (this._state === 1) return this._value;
+    if (this[SState] === 1) return this._value;
     throw new Error("PPromise did not resolve.");
   }
   get __error__(): unknown {
-    if (this._state === 2) return this._value;
+    if (this[SState] === 2) return this._value;
     throw new Error("PPromise did not reject.");
   }
   get __status__(): "Pending" | "Resolved" | "Rejected" | "Canceled" {
-    switch (this._state) {
+    switch (this[SState]) {
       case 0:
         return "Pending";
       case 1:
@@ -316,10 +319,10 @@ export class PPromise<T> implements PromiseLike<T> {
     if (args.length === 1) {
       if (args[0] instanceof PPromise) return args[0];
       const promise = new PPromise<T>();
-      promise.resolve(args[0]);
+      promise[SReturn](args[0]);
       return promise;
     } else {
-      args[0].resolve(args[1]);
+      args[0][SReturn](args[1]);
       return args[0];
     }
   }
@@ -328,10 +331,10 @@ export class PPromise<T> implements PromiseLike<T> {
   static reject<T>(...args: [PPromise<T>, unknown] | [unknown]): PPromise<T> {
     if (args.length === 1) {
       const promise = new PPromise<T>();
-      promise.reject(args[0]);
+      promise[SThrow](args[0]);
       return promise;
     } else {
-      args[0].reject(args[1]);
+      args[0][SThrow](args[1]);
       return args[0];
     }
   }
@@ -503,9 +506,6 @@ export class PPromise<T> implements PromiseLike<T> {
   }
   static VoidCancel(): void {}
 }
-
-export const PPromisePort = PPromise.port();
-export type PPromisePort<T> = InstanceType<typeof PPromisePort<T>>;
 
 class CancelError extends Error {
   constructor() {

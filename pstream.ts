@@ -34,6 +34,29 @@ export function $stream<T>(): readonly [PStreamPort<T>, PStream<T>] {
   const port: PStreamPort<T> = new PStreamPort(stream);
   return [port, stream] as const;
 }
+const SEmit = Symbol('emit');
+const SReturn = Symbol('return');
+const SThrow = Symbol('throw');
+const SState = Symbol('state');
+
+export class PStreamPort<T> {
+  constructor(private stream: PStream<T>) {}
+  get emit(): (data: T) => void {
+    return this.stream[SEmit].bind(this.stream);
+  }
+  get return(): () => void {
+    return this.stream[SReturn].bind(this.stream);
+  }
+  get throw(): (error: unknown) => void {
+    return this.stream[SThrow].bind(this.stream);
+  }
+  oncancel(cb: () => void): void {
+    this.stream.oncancel(cb);
+  }
+  get canceled(): boolean {
+    return this.stream[SState] === 3;
+  }
+}
 
 export class PStream<T> {
   // _state values:
@@ -42,7 +65,7 @@ export class PStream<T> {
   // 2 => error (terminal)
   // 3 => canceled (terminal)
   // 4 => completed/resolved (terminal)
-  private _state: 0 | 1 | 2 | 3 | 4 = 0;
+  private [SState]: 0 | 1 | 2 | 3 | 4 = 0;
   private _error: unknown; // only set when _state === 2
 
   // Buffer for data emitted before .listen() is called.
@@ -59,31 +82,10 @@ export class PStream<T> {
   // (tag 1 is reserved for data — handled separately via _next)
   private _callbacks?: any[];
 
-  static port() {
-    return class PStreamPort<T> {
-      constructor(private stream: PStream<T>) {}
-      emit(data: T): void {
-        this.stream.emit(data);
-      }
-      return(): void {
-        this.stream.resolve();
-      }
-      throw(error: unknown): void {
-        this.stream.reject(error);
-      }
-      oncancel(cb: () => void): void {
-        this.stream.oncancel(cb);
-      }
-      get canceled(): boolean {
-        return this.stream._state === 3;
-      }
-    };
-  }
-
   // --- controller ---
-  private emit(data: T): void {
-    if (this._state > 1) return; // terminal state — drop
-    if (this._state === 0) this._state = 1;
+  private [SEmit](data: T): void {
+    if (this[SState] > 1) return; // terminal state — drop
+    if (this[SState] === 0) this[SState] = 1;
     if (this._buf !== undefined) {
       // Not yet flushing — buffer the data
       this._buf.push(data);
@@ -103,9 +105,9 @@ export class PStream<T> {
     }
   }
 
-  private resolve(): void {
-    if (this._state > 1) return;
-    this._state = 4;
+  private [SReturn](): void {
+    if (this[SState] > 1) return;
+    this[SState] = 4;
     const cbs = this._callbacks;
     if (cbs) {
       for (let i = 0; i < cbs.length; i += 2) {
@@ -123,9 +125,9 @@ export class PStream<T> {
     this._next = undefined;
   }
 
-  private reject(error: unknown): void {
-    if (this._state > 1) return;
-    this._state = 2;
+  private [SThrow](error: unknown): void {
+    if (this[SState] > 1) return;
+    this[SState] = 2;
     this._error = error;
     const cbs = this._callbacks;
     if (cbs) {
@@ -145,8 +147,8 @@ export class PStream<T> {
   }
 
   cancel(): void {
-    if (this._state > 1) return;
-    this._state = 3;
+    if (this[SState] > 1) return;
+    this[SState] = 3;
     const cbs = this._callbacks;
     if (cbs) {
       for (let i = 0; i < cbs.length; i += 2) {
@@ -173,13 +175,13 @@ export class PStream<T> {
   }
 
   onerror(cb: (error: unknown) => void): this {
-    if (this._state === 2) {
+    if (this[SState] === 2) {
       try {
         cb(this._error);
       } catch (error) {
         console.error(error);
       }
-    } else if (this._state <= 1) {
+    } else if (this[SState] <= 1) {
       if (this._callbacks) this._callbacks.push(2, cb);
       else this._callbacks = [2, cb];
     }
@@ -187,13 +189,13 @@ export class PStream<T> {
   }
 
   oncancel(cb: () => void): this {
-    if (this._state === 3) {
+    if (this[SState] === 3) {
       try {
         cb();
       } catch (error) {
         console.error(error);
       }
-    } else if (this._state <= 1) {
+    } else if (this[SState] <= 1) {
       if (this._callbacks) this._callbacks.push(3, cb);
       else this._callbacks = [3, cb];
     }
@@ -201,13 +203,13 @@ export class PStream<T> {
   }
 
   onfinish(cb: () => void): this {
-    if (this._state === 4) {
+    if (this[SState] === 4) {
       try {
         cb();
       } catch (error) {
         console.error(error);
       }
-    } else if (this._state <= 1) {
+    } else if (this[SState] <= 1) {
       if (this._callbacks) this._callbacks.push(4, cb);
       else this._callbacks = [4, cb];
     }
@@ -215,7 +217,7 @@ export class PStream<T> {
   }
 
   onend(cb: () => void): this {
-    if (this._state > 1) {
+    if (this[SState] > 1) {
       // Already in terminal state — fire immediately
       try {
         cb();
@@ -246,7 +248,7 @@ export class PStream<T> {
       }
     }
     // If stream ended while buffering, finalize now
-    if (this._state > 1) {
+    if (this[SState] > 1) {
       this._next = undefined;
     }
     return this;
@@ -254,7 +256,7 @@ export class PStream<T> {
 
   // --- values ---
   get __error__(): unknown {
-    if (this._state === 2) return this._error;
+    if (this[SState] === 2) return this._error;
     throw new Error("PStream did not reject.");
   }
 
@@ -264,7 +266,7 @@ export class PStream<T> {
     | "Resolved"
     | "Rejected"
     | "Canceled" {
-    switch (this._state) {
+    switch (this[SState]) {
       case 0:
         return "Pending";
       case 1:
@@ -307,7 +309,7 @@ export class PStream<T> {
     i: number,
   ) {
     try {
-      stream.emit(mapFn(data, i));
+      stream[SEmit](mapFn(data, i));
     } catch (err) {
       onErr?.(err);
     }
@@ -323,10 +325,12 @@ export class PStream<T> {
     }
     const child = new PStream<TResult1>();
     this.oncancel(child.cancel.bind(child));
-    this.onfinish(child.resolve.bind(child));
-    this.onerror(child.reject.bind(child));
+    this.onfinish(child[SReturn].bind(child));
+    this.onerror(child[SThrow].bind(child));
     if (bindCancel) child.oncancel(this.cancel.bind(this));
-    this.listen((PStream._mapStep<T, TResult1>).bind(PStream, child, mapFn, onErr));
+    this.listen(
+      (PStream._mapStep<T, TResult1>).bind(PStream, child, mapFn, onErr),
+    );
     return child;
   }
 
@@ -336,11 +340,11 @@ export class PStream<T> {
   static emit<T>(...args: [PStream<T>, T] | [T]): PStream<T> {
     if (args.length === 1) {
       const stream = new PStream<T>();
-      stream.emit(args[0]);
-      stream.resolve();
+      stream[SEmit](args[0]);
+      stream[SReturn]();
       return stream;
     } else {
-      args[0].emit(args[1]);
+      args[0][SEmit](args[1]);
       return args[0];
     }
   }
@@ -350,10 +354,10 @@ export class PStream<T> {
   static resolve<T>(...args: [PStream<T>] | []): PStream<T> {
     if (args.length === 0) {
       const stream = new PStream<T>();
-      stream.resolve();
+      stream[SReturn]();
       return stream;
     } else {
-      args[0].resolve();
+      args[0][SReturn]();
       return args[0];
     }
   }
@@ -363,13 +367,11 @@ export class PStream<T> {
   static reject<T>(...args: [PStream<T>, unknown] | [unknown]): PStream<T> {
     if (args.length === 1) {
       const stream = new PStream<T>();
-      stream.reject(args[0]);
+      stream[SThrow](args[0]);
       return stream;
     } else {
-      args[0].reject(args[1]);
+      args[0][SThrow](args[1]);
       return args[0];
     }
   }
 }
-export const PStreamPort = PStream.port();
-export type PStreamPort<T> = InstanceType<typeof PStreamPort<T>>;
