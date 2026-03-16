@@ -30,18 +30,26 @@ import { isPromiseLike, VoidFn } from "./utils.ts";
  * await transformed;
  * ```
  */
-export function $async<T>(
-  cancelable: boolean,
-): readonly [PPromisePort<T>, PPromise<T>] {
-  const promise = new PPromise<T>(cancelable);
-  const port: PPromisePort<T> = PPromise.createPort(promise);
+export function $async<T>(): readonly [PPromisePort<T>, PPromise<T>] {
+  const promise = new PPromise<T>();
+  const port: PPromisePort<T> = new PPromisePort(promise);
   return [port, promise] as const;
 }
 
-export interface PPromisePort<T> {
-  return(data: T): void;
-  throw(error: unknown): void;
-  oncancel(cb: () => void): void;
+export class PPromisePort<T> {
+  constructor(private promise: any) {}
+  return(data: T | PromiseLike<T>): void {
+    this.promise.resolve(data);
+  }
+  throw(error: unknown): void {
+    this.promise.reject(error);
+  }
+  oncancel(cb: () => void): void {
+    this.promise.oncancel(cb);
+  }
+  get canceled() {
+    return this.promise._status === 3;
+  }
 }
 
 export class PPromise<T> implements PromiseLike<T> {
@@ -49,17 +57,14 @@ export class PPromise<T> implements PromiseLike<T> {
   // 1 => done
   // 2 => error
   // 3 => canceled
-  private result: [0] | [1, T] | [2, unknown] | [3] = [0];
-  private dataCb?: ((data: T) => void)[] = [];
-  private errorCb?: ((error: unknown) => void)[] = [];
-  private cancelCb?: (() => void)[] = [];
-  private endCb?: (() => void)[] = [];
-  constructor(
-    private readonly cancelable: boolean,
-    process?: (port: PPromisePort<T>) => void,
-  ) {
+  private _state: 0 | 1 | 2 | 3 = 0;
+  private _value: any; // reuse for data and error
+  // [tag, cb, tag, cb, ...]
+  // 1: data, 2: error, 3: cancel, 4: end
+  private callbacks?: any[];
+  constructor(process?: (port: PPromisePort<T>) => void) {
     if (process) {
-      const port = PPromise.createPort(this);
+      const port = new PPromisePort(this);
       try {
         process(port);
       } catch (err) {
@@ -67,165 +72,143 @@ export class PPromise<T> implements PromiseLike<T> {
       }
     }
   }
-  static debug = false;
-  private static onError(error: unknown) {
-    if (this.debug) {
-      console.error(error);
-    }
-  }
-  private shrinkMemory(): void {
-    delete this.dataCb;
-    delete this.errorCb;
-    delete this.endCb;
-    delete this.cancelCb;
-    Object.freeze(this);
-    Object.freeze(this.result);
-  }
-  // --- controller ---b
-  static createPort<T>(promise: PPromise<T>): PPromisePort<T> {
-    return {
-      return: promise.resolve.bind(promise),
-      throw: promise.reject.bind(promise),
-      oncancel: promise.oncancel.bind(promise),
-    };
-  }
+  // --- controller ---
   private resolve(data: T | PromiseLike<T>): void {
-    if (this.dataCb === undefined) return;
+    if (this._state !== 0) return;
     if (isPromiseLike(data)) {
       data.then(this.resolve.bind(this), this.reject.bind(this));
       return;
     }
-    this.result = [1, data];
-    for (const cb of this.dataCb) {
-      try {
-        cb(data);
-      } catch (error) {
-        PPromise.onError(error);
-      }
-    }
-    if (this.endCb !== undefined) {
-      for (const cb of this.endCb) {
-        try {
-          cb();
-        } catch (error) {
-          PPromise.onError(error);
+    this._state = 1;
+    this._value = data;
+    const cbs = this.callbacks;
+    if (cbs) {
+      for (let i = 0; i < cbs.length; i += 2) {
+        const tag = cbs[i];
+        if (tag === 1) {
+          try {
+            cbs[i + 1](data);
+          } catch (error) {
+            console.error(error);
+          }
+        } else if (tag === 4) {
+          try {
+            cbs[i + 1]();
+          } catch (error) {
+            console.error(error);
+          }
         }
       }
     }
-    this.shrinkMemory();
+    this.callbacks = undefined;
   }
   private reject(error: unknown): void {
-    if (this.errorCb === undefined) return;
-    this.result = [2, error];
-    for (const cb of this.errorCb) {
-      try {
-        cb(error);
-      } catch (error) {
-        PPromise.onError(error);
-      }
-    }
-    if (this.endCb !== undefined) {
-      for (const cb of this.endCb) {
-        try {
-          cb();
-        } catch (error) {
-          PPromise.onError(error);
+    if (this._state !== 0) return;
+    this._state = 2;
+    this._value = error;
+    const cbs = this.callbacks;
+    if (cbs) {
+      for (let i = 0; i < cbs.length; i += 2) {
+        const tag = cbs[i];
+        if (tag === 2) {
+          try {
+            cbs[i + 1](error);
+          } catch (error) {
+            console.error(error);
+          }
+        } else if (tag === 4) {
+          try {
+            cbs[i + 1]();
+          } catch (error) {
+            console.error(error);
+          }
         }
       }
     }
-    this.shrinkMemory();
+    this.callbacks = undefined;
   }
   cancel(): void {
-    if (!this.cancelable) return;
-    if (this.cancelCb === undefined) return;
-    this.result = [3];
-    for (const cb of this.cancelCb) {
-      try {
-        cb();
-      } catch (error) {
-        PPromise.onError(error);
-      }
-    }
-    if (this.endCb !== undefined) {
-      for (const cb of this.endCb) {
-        try {
-          cb();
-        } catch (error) {
-          PPromise.onError(error);
+    if (this._state !== 0) return;
+    this._state = 3;
+    const cbs = this.callbacks;
+    if (cbs) {
+      for (let i = 0; i < cbs.length; i += 2) {
+        const tag = cbs[i];
+        if (tag === 3 || tag === 4) {
+          try {
+            cbs[i + 1]();
+          } catch (error) {
+            console.error(error);
+          }
         }
       }
     }
-    this.shrinkMemory();
+    this.callbacks = undefined;
   }
   // --- events ---
   ondata(cb: (data: T) => void): this {
-    if (this.dataCb === undefined) {
-      if (this.result[0] === 1) {
-        try {
-          cb(this.result[1]);
-        } catch (error) {
-          PPromise.onError(error);
-        }
+    if (this._state === 1) {
+      try {
+        cb(this._value);
+      } catch (error) {
+        console.error(error);
       }
-      return this;
+    } else if (this._state === 0) {
+      if (this.callbacks) this.callbacks.push(1, cb);
+      else this.callbacks = [1, cb];
     }
-    this.dataCb.push(cb);
     return this;
   }
   onerror(cb: (error: unknown) => void): this {
-    if (this.errorCb === undefined) {
-      if (this.result[0] === 2) {
-        try {
-          cb(this.result[1]);
-        } catch (error) {
-          PPromise.onError(error);
-        }
+    if (this._state === 2) {
+      try {
+        cb(this._value);
+      } catch (error) {
+        console.error(error);
       }
-      return this;
+    } else if (this._state === 0) {
+      if (this.callbacks) this.callbacks.push(2, cb);
+      else this.callbacks = [2, cb];
     }
-    this.errorCb.push(cb);
     return this;
   }
   oncancel(cb: () => void): this {
-    if (!this.cancelable) return this;
-    if (this.cancelCb === undefined) {
-      if (this.result[0] === 3) {
-        try {
-          cb();
-        } catch (error) {
-          PPromise.onError(error);
-        }
+    if (this._state === 3) {
+      try {
+        cb();
+      } catch (error) {
+        console.error(error);
       }
-      return this;
+    } else if (this._state === 0) {
+      if (this.callbacks) this.callbacks.push(3, cb);
+      else this.callbacks = [3, cb];
     }
-    this.cancelCb.push(cb);
     return this;
   }
   onend(cb: () => void): this {
-    if (this.endCb === undefined) {
-      if (this.result[0] !== 0) {
-        try {
-          cb();
-        } catch (error) {
-          PPromise.onError(error);
-        }
+    if (this._state !== 0) {
+      try {
+        cb();
+      } catch (error) {
+        console.error(error);
       }
-      return this;
+    } else {
+      if (this.callbacks) this.callbacks.push(4, cb);
+      else this.callbacks = [4, cb];
     }
-    this.endCb.push(cb);
     return this;
   }
   // --- values ---
   get __value__(): T {
-    if (this.result[0] === 1) return this.result[1];
+    if (this._state === 1) return this._value;
     throw new Error("PPromise did not resolve.");
   }
   get __error__(): unknown {
-    if (this.result[0] === 2) return this.result[1];
+    if (this._state === 2) return this._value;
     throw new Error("PPromise did not reject.");
   }
   get __status__(): "Pending" | "Resolved" | "Rejected" | "Canceled" {
-    switch (this.result[0]) {
+    switch (this._state) {
       case 0:
         return "Pending";
       case 1:
@@ -273,8 +256,8 @@ export class PPromise<T> implements PromiseLike<T> {
       | undefined,
     bindCancel?: boolean,
   ): PPromise<TResult1 | TResult2 | TResult3> {
-    const promise = new PPromise<any>(this.cancelable);
-    const port = PPromise.createPort(promise);
+    const promise = new PPromise<any>();
+    const port = new PPromisePort(promise);
     if (onfulfilled) {
       this.ondata(PPromise._map.bind(PPromise, port, onfulfilled));
     } else {
@@ -319,32 +302,7 @@ export class PPromise<T> implements PromiseLike<T> {
   ): PPromise<T | TResult> {
     return this.map(null, null, oncanceled, bindCancel);
   }
-  $then<TResult1 = T, TResult2 = never>(
-    onfulfilled?:
-      | ((value: T) => TResult1 | PromiseLike<TResult1>)
-      | null
-      | undefined,
-    onrejected?:
-      | ((reason: any) => TResult2 | PromiseLike<TResult2>)
-      | null
-      | undefined,
-  ): PPromise<TResult1 | TResult2> {
-    return this.map(onfulfilled, onrejected, PPromise.ThrowCancel, true);
-  }
-  $catch<TResult2 = never>(
-    onrejected?:
-      | ((reason: any) => TResult2 | PromiseLike<TResult2>)
-      | null
-      | undefined,
-  ): PPromise<T | TResult2> {
-    return this.map(null, onrejected, PPromise.ThrowCancel, true);
-  }
-  $catchCancel<TResult = never>(
-    oncanceled?: (() => TResult | PromiseLike<TResult>) | undefined | null,
-    bindCancel: boolean = true,
-  ): PPromise<T | TResult> {
-    return this.map(null, null, oncanceled, bindCancel);
-  }
+
   // --- statics ---
   static resolve<T>(
     promise: PPromise<T>,
@@ -356,7 +314,7 @@ export class PPromise<T> implements PromiseLike<T> {
   ): PPromise<T> {
     if (args.length === 1) {
       if (args[0] instanceof PPromise) return args[0];
-      const promise = new PPromise<T>(false);
+      const promise = new PPromise<T>();
       promise.resolve(args[0]);
       return promise;
     } else {
@@ -368,7 +326,7 @@ export class PPromise<T> implements PromiseLike<T> {
   static reject<T>(error: unknown): PPromise<T>;
   static reject<T>(...args: [PPromise<T>, unknown] | [unknown]): PPromise<T> {
     if (args.length === 1) {
-      const promise = new PPromise<T>(false);
+      const promise = new PPromise<T>();
       promise.reject(args[0]);
       return promise;
     } else {
@@ -377,46 +335,7 @@ export class PPromise<T> implements PromiseLike<T> {
     }
   }
   // --- merge ---
-  private static _allState(len: number) {
-    return {
-      cnt: 0,
-      finalCnt: (len * (len + 1)) / 2,
-      err: false,
-      result: new Array(len),
-      promise: new PPromise<any>(true),
-    };
-  }
-  private static _allResolveCb(
-    state: ReturnType<typeof this._allState>,
-    i: number,
-    value: any,
-  ) {
-    if (state.err) return;
-    state.cnt += i;
-    state.result[i] = value;
-    if (state.cnt >= state.finalCnt) {
-      state.promise.resolve(state.result);
-      const _s = state as Partial<typeof state>;
-      delete _s.result;
-      delete _s.promise;
-      delete _s.cnt;
-      delete _s.finalCnt;
-    }
-  }
-  private static _allRejectCb(
-    state: ReturnType<typeof this._allState>,
-    _i: number,
-    error: unknown,
-  ) {
-    if (state.err) return;
-    state.err = true;
-    state.promise.reject(error);
-    const _s = state as Partial<typeof state>;
-    delete _s.result;
-    delete _s.promise;
-    delete _s.cnt;
-    delete _s.finalCnt;
-  }
+
   private static allUtils = {
     onData(
       state: { cnt: number | null; result: any },
@@ -458,9 +377,9 @@ export class PPromise<T> implements PromiseLike<T> {
       key: number | string,
       bindCancel: boolean,
     ) {
-      p.ondata(PPromise.allUtils.onData.bind(null, state, port, key));
-      p.onerror(PPromise.allUtils.onError.bind(null, state, port));
-      p.oncancel(PPromise.allUtils.onCancel.bind(null, state, port));
+      p.ondata(PPromise.allUtils.onData.bind(PPromise, state, port, key));
+      p.onerror(PPromise.allUtils.onError.bind(PPromise, state, port));
+      p.oncancel(PPromise.allUtils.onCancel.bind(PPromise, state, port));
       if (bindCancel) port.oncancel(p.cancel.bind(p));
     },
     bindEnd(
@@ -471,7 +390,7 @@ export class PPromise<T> implements PromiseLike<T> {
       bindCancel: boolean,
     ) {
       const onData = PPromise.allUtils.onData.bind(
-        null,
+        PPromise,
         state,
         port,
         key,
@@ -507,8 +426,8 @@ export class PPromise<T> implements PromiseLike<T> {
         result: Array(data.length),
       };
       if (state.cnt === 0) return PPromise.resolve(state.result);
-      const promise = new PPromise<any>(bindCancel);
-      const port = PPromise.createPort(promise);
+      const promise = new PPromise<any>();
+      const port = new PPromisePort(promise);
       for (let i = 0; i < data.length; i++) {
         const p = PPromise.resolve(data[i]);
         PPromise.allUtils.bindData(p, state, port, i, bindCancel);
@@ -521,8 +440,8 @@ export class PPromise<T> implements PromiseLike<T> {
         result: {},
       };
       if (state.cnt === 0) return PPromise.resolve(state.result);
-      const promise = new PPromise<any>(bindCancel);
-      const port = PPromise.createPort(promise);
+      const promise = new PPromise<any>();
+      const port = new PPromisePort(promise);
       for (const key in data) {
         const p = PPromise.resolve(data[key]);
         PPromise.allUtils.bindData(p, state, port, key, bindCancel);
@@ -541,13 +460,13 @@ export class PPromise<T> implements PromiseLike<T> {
         result: Array(data.length),
       };
       if (state.cnt === 0) return PPromise.resolve(state.result);
-      const promise = new PPromise<any>(bindCancel);
-      const port = PPromise.createPort(promise);
+      const promise = new PPromise<any>();
+      const port = new PPromisePort(promise);
       for (let i = 0; i < data.length; i++) {
         const p = PPromise.resolve(data[i]);
         PPromise.allUtils.bindEnd(p, state, port, i, bindCancel);
       }
-      return promise.$then(VoidFn);
+      return promise.then(VoidFn);
     }
     if (typeof data === "object" && data) {
       const state: { cnt: number | null; result: any } = {
@@ -555,13 +474,13 @@ export class PPromise<T> implements PromiseLike<T> {
         result: {},
       };
       if (state.cnt === 0) return PPromise.resolve(state.result);
-      const promise = new PPromise<any>(bindCancel);
-      const port = PPromise.createPort(promise);
+      const promise = new PPromise<any>();
+      const port = new PPromisePort(promise);
       for (const key in data) {
         const p = PPromise.resolve(data[key]);
         PPromise.allUtils.bindEnd(p, state, port, key, bindCancel);
       }
-      return promise.$then(VoidFn);
+      return promise.then(VoidFn);
     }
     throw new Error("Unknown Data");
   }
