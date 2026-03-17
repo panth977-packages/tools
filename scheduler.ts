@@ -1,5 +1,4 @@
 import type { z } from "zod";
-import { PPromise } from "./ppromise.ts";
 import { AccessKey } from "./basic.ts";
 
 /**
@@ -39,12 +38,12 @@ export class PubSub<Z extends z.ZodType> {
     }
   }
 
-  publish(event: z.infer<Z>): PPromise<void> {
+  async publish(event: z.infer<Z>): Promise<void> {
     const parsed = this.eventSchema.safeParse(event);
     if (!parsed.success) {
-      return PPromise.reject(parsed.error);
+      throw parsed.error;
     }
-    const jobs = [];
+    const jobs: PromiseLike<void>[] = [];
     for (const cb of this.listners) {
       try {
         jobs.push(cb(event));
@@ -52,7 +51,7 @@ export class PubSub<Z extends z.ZodType> {
         PubSub.onError(err);
       }
     }
-    return PPromise.allCompleted(jobs);
+    await Promise.allSettled(jobs);
   }
 
   private unlisten(cb: (event: z.infer<Z>) => PromiseLike<any>): void {
@@ -66,6 +65,22 @@ export class PubSub<Z extends z.ZodType> {
     this.listners.push(cb);
     return this.unlisten.bind(this, cb);
   }
+}
+
+type Deferred<R> = {
+  promise: Promise<R>;
+  resolve: (value: R) => void;
+  reject: (reason: unknown) => void;
+};
+
+function deferred<R>(): Deferred<R> {
+  let resolve!: (value: R) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<R>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
 }
 
 /**
@@ -89,49 +104,42 @@ export class PubSub<Z extends z.ZodType> {
  * ```
  */
 export class CreateBatch<A, R> {
-  protected queue: (readonly [A, PPromise<R>])[] = [];
+  protected queue: (readonly [A, Deferred<R>])[] = [];
   protected timer: null | ReturnType<typeof setTimeout> = null;
   constructor(
     protected implementation: (arg: A[]) => PromiseLike<R[]>,
     protected delayInMs: number,
   ) {}
-  private then(promises: PPromise<R>[], data: R[]) {
-    for (let i = 0; i < promises.length; i++) {
-      PPromise.resolve(promises[i], data[i]);
+  private then(deferreds: Deferred<R>[], data: R[]) {
+    for (let i = 0; i < deferreds.length; i++) {
+      deferreds[i].resolve(data[i]);
     }
   }
-  private catch(promises: PPromise<R>[], error: unknown) {
-    for (const pomise of promises) {
-      PPromise.reject(pomise, error);
+  private catch(deferreds: Deferred<R>[], error: unknown) {
+    for (const d of deferreds) {
+      d.reject(error);
     }
   }
   protected processQueue() {
     const args = this.queue.map(AccessKey("0"));
-    const promises = this.queue.map(AccessKey("1"));
+    const deferreds = this.queue.map(AccessKey("1"));
     this.queue = [];
     this.timer = null;
     try {
       this.implementation(args).then(
-        this.then.bind(this, promises),
-        this.catch.bind(this, promises),
+        this.then.bind(this, deferreds),
+        this.catch.bind(this, deferreds),
       );
     } catch (error) {
-      this.catch(promises, error);
+      this.catch(deferreds, error);
     }
   }
-  private removeJob(job: CreateBatch<A, R>["queue"][number]) {
-    const i = this.queue.indexOf(job);
-    if (i > -1) {
-      this.queue.splice(i, 1);
-    }
-  }
-  runJob(arg: A): PPromise<R> {
-    const promise = new PPromise<R>();
-    const ele = [arg, promise] as const;
-    promise.oncancel(this.removeJob.bind(this, ele));
+  runJob(arg: A): Promise<R> {
+    const d = deferred<R>();
+    const ele = [arg, d] as const;
     this.queue.push(ele);
     this.timer ??= setTimeout(this.processQueue.bind(this), this.delayInMs);
-    return promise;
+    return d.promise;
   }
   $(): this["runJob"] {
     return this.runJob.bind(this);
