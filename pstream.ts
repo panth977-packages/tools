@@ -34,10 +34,10 @@ export function $stream<T>(): readonly [PStreamPort<T>, PStream<T>] {
   const port: PStreamPort<T> = new PStreamPort(stream);
   return [port, stream] as const;
 }
-const SEmit = Symbol('emit');
-const SReturn = Symbol('return');
-const SThrow = Symbol('throw');
-const SState = Symbol('state');
+const SEmit = Symbol("emit");
+const SReturn = Symbol("return");
+const SThrow = Symbol("throw");
+const SState = Symbol("state");
 
 export class PStreamPort<T> {
   constructor(private stream: PStream<T>) {}
@@ -112,7 +112,17 @@ export class PStream<T> {
     if (cbs) {
       for (let i = 0; i < cbs.length; i += 2) {
         const tag = cbs[i];
-        if (tag === 4 || tag === 5) {
+        if (tag === 4) {
+          try {
+            cbs[i + 1]();
+          } catch (error) {
+            console.error(error);
+          }
+        }
+      }
+      for (let i = 0; i < cbs.length; i += 2) {
+        const tag = cbs[i];
+        if (tag === 5) {
           try {
             cbs[i + 1]();
           } catch (error) {
@@ -133,9 +143,19 @@ export class PStream<T> {
     if (cbs) {
       for (let i = 0; i < cbs.length; i += 2) {
         const tag = cbs[i];
-        if (tag === 2 || tag === 5) {
+        if (tag === 2) {
           try {
-            tag === 2 ? cbs[i + 1](error) : cbs[i + 1]();
+            cbs[i + 1](error);
+          } catch (error) {
+            console.error(error);
+          }
+        }
+      }
+      for (let i = 0; i < cbs.length; i += 2) {
+        const tag = cbs[i];
+        if (tag === 5) {
+          try {
+            cbs[i + 1]();
           } catch (error) {
             console.error(error);
           }
@@ -153,7 +173,17 @@ export class PStream<T> {
     if (cbs) {
       for (let i = 0; i < cbs.length; i += 2) {
         const tag = cbs[i];
-        if (tag === 3 || tag === 5) {
+        if (tag === 3) {
+          try {
+            cbs[i + 1]();
+          } catch (error) {
+            console.error(error);
+          }
+        }
+      }
+      for (let i = 0; i < cbs.length; i += 2) {
+        const tag = cbs[i];
+        if (tag === 5) {
           try {
             cbs[i + 1]();
           } catch (error) {
