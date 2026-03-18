@@ -53,6 +53,9 @@ export class PStreamPort<T> {
   oncancel(cb: () => void): void {
     this.stream.oncancel(cb);
   }
+  onend(cb: () => void): void {
+    this.stream.onend(cb);
+  }
   get canceled(): boolean {
     return this.stream[SState] === 3;
   }
