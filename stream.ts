@@ -33,43 +33,43 @@ export class PStream<T> {
     }
     this.abort.signal.addEventListener("abort", fn, { once: true });
   }
-  static Iterable<T>(
-    stream: ReadableStream<T>,
-    cancelHook?: (cancel: VoidFunction) => void,
-  ): IterableStream<T> {
-    return new IterableStream(stream, cancelHook);
-  }
-}
 
-class IterableStream<T> implements AsyncIterableIterator<T> {
-  constructor(
-    private stream: ReadableStream<T>,
-    cancelHook?: (cancel: VoidFunction) => void,
+  static async TransferStream<L, P>(
+    stream: ReadableStream<L>,
+    port: PStream<P>,
+    {
+      listen,
+      onError = port.error.bind(port),
+      onEnd = port.close.bind(port),
+    }: {
+      listen: (data: L) => void;
+      onError?: (err: unknown) => void;
+      onEnd?: "none" | (() => void);
+    },
   ) {
-    this.reader = this.stream.getReader();
-    cancelHook?.(this.cancel.bind(this));
-  }
-  private reader?: ReadableStreamDefaultReader<T>;
-  async next(): Promise<{ done: boolean; value: T }> {
-    if (!this.reader) return { done: true, value: undefined as never };
-    const { done, value } = await this.reader.read();
-    return { done, value: value! };
-  }
-  return(): Promise<{ done: true; value: undefined }> {
-    if (this.reader) {
-      this.reader.releaseLock();
-      delete this.reader
+    try {
+      const reader = stream.getReader();
+      const aborted = new Promise<void>((resolve) => port.onAbort(resolve));
+      let isCanceled = false;
+      port.onAbort(() => (isCanceled = true));
+      while (true) {
+        const result = await Promise.race([
+          reader.read().then((data) => ["data", data] as const),
+          aborted.then(() => ["aborted"] as const),
+        ]);
+        if (result[0] === "aborted") {
+          reader.releaseLock();
+          stream.cancel();
+          break;
+        }
+        if (result[1].done) break;
+        listen(result[1].value);
+      }
+      if (!isCanceled) {
+        if (onEnd != "none") onEnd();
+      }
+    } catch (err) {
+      onError(err);
     }
-    return Promise.resolve({ done: true, value: undefined });
-  }
-  private cancel() {
-    if (this.reader) {
-      this.reader.releaseLock();
-      delete this.reader
-      this.stream.cancel();
-    }
-  }
-  [Symbol.asyncIterator](): IterableStream<T> {
-    return this;
   }
 }
