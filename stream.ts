@@ -33,20 +33,41 @@ export class PStream<T> {
     }
     this.abort.signal.addEventListener("abort", fn, { once: true });
   }
-  static Iterable<T>(stream: ReadableStream<T>): IterableStream<T> {
-    return new IterableStream(stream.getReader());
+  static Iterable<T>(
+    stream: ReadableStream<T>,
+    cancelHook?: (cancel: VoidFunction) => void,
+  ): IterableStream<T> {
+    return new IterableStream(stream, cancelHook);
   }
 }
 
 class IterableStream<T> implements AsyncIterableIterator<T> {
-  constructor(private reader: ReadableStreamDefaultReader<T>) {}
+  constructor(
+    private stream: ReadableStream<T>,
+    cancelHook?: (cancel: VoidFunction) => void,
+  ) {
+    this.reader = this.stream.getReader();
+    cancelHook?.(this.cancel.bind(this));
+  }
+  private reader?: ReadableStreamDefaultReader<T>;
   async next(): Promise<{ done: boolean; value: T }> {
+    if (!this.reader) return { done: true, value: undefined as never };
     const { done, value } = await this.reader.read();
     return { done, value: value! };
   }
   return(): Promise<{ done: true; value: undefined }> {
-    this.reader.releaseLock();
+    if (this.reader) {
+      this.reader.releaseLock();
+      delete this.reader
+    }
     return Promise.resolve({ done: true, value: undefined });
+  }
+  private cancel() {
+    if (this.reader) {
+      this.reader.releaseLock();
+      delete this.reader
+      this.stream.cancel();
+    }
   }
   [Symbol.asyncIterator](): IterableStream<T> {
     return this;
