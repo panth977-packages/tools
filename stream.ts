@@ -20,9 +20,11 @@ export class PStream<T> {
   }
   close(): void {
     this.controller?.close();
+    this.abort.abort();
   }
   error(e?: any) {
     this.controller?.error(e);
+    this.abort.abort();
   }
   onAbort(fn: VoidFunction) {
     if (!this.controller) {
