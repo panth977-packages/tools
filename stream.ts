@@ -1,69 +1,80 @@
 export class PStream<T> {
   private controller: ReadableStreamDefaultController<T> | null = null;
-  private abort: AbortController = new AbortController();
+  private abort?: ((reason?: any) => void)[] = [];
+  private abortReason?: any;
   readonly stream: ReadableStream<T> = new ReadableStream<T>({
-    start: PStream.onStart.bind(PStream, this),
-    cancel: PStream.onCancel.bind(PStream, this),
+    start: this.onStart.bind(this),
+    cancel: this.onCancel.bind(this),
   });
-  private static onStart<T>(
-    stream: PStream<T>,
-    c: ReadableStreamDefaultController<T>,
-  ) {
-    stream.controller = c;
+  private onStart(controller: ReadableStreamDefaultController<T>) {
+    this.controller = controller;
   }
-  private static onCancel<T>(stream: PStream<T>): void {
-    stream.abort.abort();
-    stream.controller = null;
+  private onCancel(reason?: any): void {
+    for (const fn of this.abort ?? []) {
+      fn(reason);
+    }
+    delete this.abort;
+    this.controller = null;
+    this.abortReason = reason;
   }
   emit(data: T): void {
     this.controller?.enqueue(data);
   }
   close(): void {
     this.controller?.close();
-    this.abort.abort();
+    for (const fn of this.abort ?? []) {
+      fn();
+    }
+    delete this.abort;
+    this.controller = null;
   }
   error(e?: any) {
     this.controller?.error(e);
-    this.abort.abort();
-  }
-  onAbort(fn: VoidFunction) {
-    if (!this.controller) {
-      fn();
-      return;
+    for (const fn of this.abort ?? []) {
+      fn(e);
     }
-    this.abort.signal.addEventListener("abort", fn, { once: true });
+    delete this.abort;
+    this.controller = null;
+    this.abortReason = e;
+  }
+  onAbort(fn: (reason?: any) => void) {
+    if (this.abort) {
+      this.abort.push(fn);
+    } else {
+      fn(this.abortReason);
+    }
   }
 
   static async TransferStream<L, P>(
     stream: ReadableStream<L>,
     port: PStream<P>,
-    {
-      listen,
-      onError = port.error.bind(port),
-      onEnd = port.close.bind(port),
-    }: {
-      listen: (data: L) => void;
-      onError?: (err: unknown) => void;
-      onEnd?: "none" | (() => void);
-    },
+    { listen, onError = port.error.bind(port), onEnd = port.close.bind(port) }:
+      {
+        listen: (data: L) => void;
+        onError?: (err: unknown) => void;
+        onEnd?: "none" | (() => void);
+      },
   ) {
     try {
       const reader = stream.getReader();
-      const aborted = new Promise<void>((resolve) => port.onAbort(resolve));
+      const abortedSymbol = Symbol("aborted");
+      const aborted = new Promise<typeof abortedSymbol>((resolve) =>
+        port.onAbort(resolve.bind(null, abortedSymbol))
+      );
       let isCanceled = false;
       port.onAbort(() => (isCanceled = true));
       while (true) {
         const result = await Promise.race([
-          reader.read().then((data) => ["data", data] as const),
-          aborted.then(() => ["aborted"] as const),
+          reader.read(),
+          aborted,
         ]);
-        if (result[0] === "aborted") {
+        if (result === abortedSymbol) {
           reader.releaseLock();
           stream.cancel();
           break;
         }
-        if (result[1].done) break;
-        listen(result[1].value);
+        if (result.done) break;
+        listen(result.value);
       }
       if (!isCanceled) {
         if (onEnd != "none") onEnd();
