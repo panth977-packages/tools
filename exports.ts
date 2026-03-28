@@ -9,3 +9,4 @@ export * from "./structure.ts";
 export * from "./scheduler.ts";
 export * from "./encode.ts";
 export * from "./utils.ts";
+export * from "./stream.ts";
